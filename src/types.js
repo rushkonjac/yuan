@@ -95,12 +95,12 @@ export const DIRECTIONS = Object.freeze([DIR.UP, DIR.DOWN, DIR.LEFT, DIR.RIGHT])
 
 /** @type {readonly CardDef[]} */
 export const CARD_POOL = Object.freeze([
-  { id: 'scout', name: '侦查', type: 'instant', desc: 'Check if enemy piece is Heart' },
-  { id: 'reef', name: '造礁', type: 'instant', desc: 'Place reef on empty tile' },
-  { id: 'swap', name: '暗流', type: 'instant', desc: 'Swap two friendly pieces' },
-  { id: 'shield', name: '渊甲', type: 'trigger', desc: 'Cancel collision if losing' },
-  { id: 'blade', name: '渊刃', type: 'trigger', desc: 'No rank loss on win' },
-  { id: 'blast', name: '渊爆', type: 'trigger', desc: 'Mutual destruction on collision' },
+  { id: 'scout', name: '侦查', type: 'instant', desc: '侦查一枚敌方棋子是否为渊心' },
+  { id: 'reef', name: '造礁', type: 'instant', desc: '在空格上放置一个暗礁，阻挡通行' },
+  { id: 'swap', name: '暗流', type: 'instant', desc: '交换己方两枚棋子的位置' },
+  { id: 'shield', name: '渊甲', type: 'trigger', desc: '设于己方棋子：碰撞落败时取消碰撞，双方不受损' },
+  { id: 'blade', name: '渊刃', type: 'trigger', desc: '设于己方棋子：碰撞获胜时不降低等级' },
+  { id: 'blast', name: '渊爆', type: 'trigger', desc: '设于己方棋子：碰撞时与敌方同归于尽' },
 ]);
 
 /**
@@ -109,16 +109,16 @@ export const CARD_POOL = Object.freeze([
 
 /** @type {readonly DestinyDef[]} */
 export const DESTINY_POOL = Object.freeze([
-  { id: 'reveal_all', name: '荧光爆发', type: 'instant', desc: 'Reveal all enemy ranks this turn' },
-  { id: 'surge', name: '涌潮', type: 'instant', desc: '+2 max distance this turn' },
-  { id: 'card_restore', name: '渊力回溯', type: 'instant', desc: 'Restore one used card' },
-  { id: 'reef_storm', name: '裂隙风暴', type: 'instant', desc: 'Spawn 3 random reefs' },
-  { id: 'reef_remove', name: '暗礁操控', type: 'instant', desc: 'Remove 2 reefs' },
-  { id: 'deep_instinct', name: '深海本能', type: 'persistent', desc: 'Reveal 1 random enemy rank each turn' },
-  { id: 'dark_surge', name: '暗涌', type: 'persistent', desc: '+0.5 speed for all pieces' },
-  { id: 'fog', name: '渊雾', type: 'persistent', desc: 'Reduce glow by 1 level' },
-  { id: 'resonance', name: '渊之共鸣', type: 'persistent', desc: 'Reveal killer rank when piece dies' },
-  { id: 'shell', name: '坚壳', type: 'persistent', desc: '+1 extra body on collision win' },
+  { id: 'reveal_all', name: '荧光爆发', type: 'instant', desc: '本回合揭示所有敌方棋子的等级' },
+  { id: 'surge', name: '涌潮', type: 'instant', desc: '本回合所有棋子最大移动距离+2' },
+  { id: 'card_restore', name: '渊力回溯', type: 'instant', desc: '随机恢复一张已使用的渊力卡' },
+  { id: 'reef_storm', name: '裂隙风暴', type: 'instant', desc: '在棋盘随机位置生成3个暗礁' },
+  { id: 'reef_remove', name: '暗礁操控', type: 'instant', desc: '移除棋盘上2个随机暗礁' },
+  { id: 'deep_instinct', name: '深海本能', type: 'persistent', desc: '每回合自动揭示1枚敌方棋子的等级' },
+  { id: 'dark_surge', name: '暗涌', type: 'persistent', desc: '己方所有棋子速度永久+0.5' },
+  { id: 'fog', name: '渊雾', type: 'persistent', desc: '己方棋子发光等级降低1级，更难被察觉' },
+  { id: 'resonance', name: '渊之共鸣', type: 'persistent', desc: '己方棋子被击败时，揭示击杀者的等级' },
+  { id: 'shell', name: '坚壳', type: 'persistent', desc: '碰撞获胜时额外增加1点体型' },
 ]);
 
 let _nextPieceId = 1;

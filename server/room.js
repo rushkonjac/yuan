@@ -14,16 +14,19 @@ function generateCode() {
   return code;
 }
 
-function filterPiecesForPlayer(pieces, viewPlayer) {
+function filterPiecesForPlayer(pieces, viewPlayer, phase) {
   return pieces.filter(p => p.alive || true).map(p => {
+    const isEnemy = p.owner !== viewPlayer;
     const base = {
       id: p.id,
       owner: p.owner,
       bodySize: p.bodySize,
-      tiles: p.tiles.map(t => ({ col: t.col, row: t.row })),
+      tiles: (isEnemy && phase === PHASE.DEPLOY)
+        ? []
+        : p.tiles.map(t => ({ col: t.col, row: t.row })),
       alive: p.alive,
     };
-    if (p.owner === viewPlayer) {
+    if (!isEnemy) {
       base.type = p.type;
       base.rank = p.rank;
       base.currentRank = p.currentRank;
@@ -276,7 +279,7 @@ export class Room {
       event: 'stateUpdate',
       phase: game.phase,
       turn: game.turn,
-      pieces: filterPiecesForPlayer(game.pieces, player),
+      pieces: filterPiecesForPlayer(game.pieces, player, game.phase),
       board: serializeBoard(game.board),
       cards: st.cards.map(c => ({ id: c.id, name: c.name, type: c.type, desc: c.desc })),
       usedCards: st.usedCards,
@@ -287,6 +290,7 @@ export class Room {
       opponentDeployedCount: opSt.deployedCount,
       commandSubmitted: st.commandSubmitted,
       opponentCommandSubmitted: opSt.commandSubmitted,
+      surgeDistanceBonus: st.surgeDistanceBonus || 0,
     };
 
     if (game.phase === PHASE.DESTINY && !st.destinySubmitted) {

@@ -235,14 +235,13 @@
       <div id="command-panel" class="panel hidden">
         <h3>指令阶段</h3>
         <div id="piece-list"></div>
-        <p style="font-size:11px;color:#556677;margin-top:8px;">点击棋子 → 方向键 → 数字键 → Enter</p>
+        <p style="font-size:11px;color:#556677;margin-top:8px;">点击棋子 → 点击高亮格子移动</p>
         <div style="margin-top:8px;">
           <h3>渊力卡</h3>
           <div id="card-use-list"></div>
         </div>
-        <div style="margin-top:8px;display:flex;gap:6px;">
-          <button id="cmd-confirm-btn" class="confirm-btn" style="flex:1;">确认 (Enter)</button>
-          <button id="cmd-skip-btn" class="confirm-btn" style="flex:1;border-color:#ff6644;color:#ff6644;">跳过 (Esc)</button>
+        <div style="margin-top:8px;">
+          <button id="cmd-skip-btn" class="confirm-btn" style="width:100%;border-color:#ff6644;color:#ff6644;">跳过本回合</button>
         </div>
       </div>
 
@@ -266,18 +265,19 @@
         <h3>操作说明</h3>
         <div style="font-size:11px;color:#556677;line-height:1.5;">
           <b>选牌：</b>点击3张 → 确认<br>
-          <b>部署：</b>点击蓝色区域<br>
-          <b>指令：</b>点击棋子 → WASD → 1-4 → Enter<br>
-          <b>跳过：</b>Esc
+          <b>部署：</b>点击蓝色区域放置<br>
+          <b>指令：</b>点击棋子 → 点击高亮格子<br>
+          <b>跳过：</b>点击跳过按钮
         </div>
       </div>
     </div>
   </div>
 
   <script type="module">
-    import { CARD_POOL, PHASE, PIECE_TYPE, BOARD_COLS, BOARD_ROWS, CELL_SIZE, DIR } from './src/types.js';
+    import { CARD_POOL, PHASE, PIECE_TYPE, BOARD_COLS, BOARD_ROWS, CELL_SIZE, DIR, DIRECTIONS } from './src/types.js';
     import { Renderer } from './src/renderer.js';
     import { Network } from './src/network.js';
+    import { computePath, getMaxDistance } from './src/movement.js';
 
     // ─── State ──────────────────────────────────────
     const net = new Network();
@@ -285,9 +285,7 @@
     let myPlayer = null;
     let gameState = null;
     let selectedPieceId = null;
-    let chosenDir = null;
-    let chosenDist = 0;
-    let previewPath = null;
+    let reachableCells = [];
     let cardSelection = [];
     let pendingCard = null;
     let swapFirst = null;
@@ -322,19 +320,22 @@
       if (code.length !== 4) { setLobbyStatus('请输入4位房间码'); return; }
       connectAndSend('join', { code });
     });
-    document.getElementById('join-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') document.getElementById('btn-join').click();
-    });
 
+    let pendingAction = null;
     function connectAndSend(action, data = {}) {
       const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${location.host}`;
+      pendingAction = { action, data };
       net.connect(wsUrl);
-      net.on('connected', () => {
-        net.send(action, data);
-      });
       setLobbyStatus('连接中...');
     }
+
+    net.on('connected', () => {
+      if (pendingAction) {
+        net.send(pendingAction.action, pendingAction.data);
+        pendingAction = null;
+      }
+    });
 
     function setLobbyStatus(msg) {
       document.getElementById('lobby-status').textContent = msg;
@@ -391,9 +392,7 @@
 
     net.on('moveAccepted', () => {
       selectedPieceId = null;
-      chosenDir = null;
-      chosenDist = 0;
-      previewPath = null;
+      reachableCells = [];
       statusMsg = '等待对手...';
       render();
     });
@@ -467,20 +466,6 @@
       handleCellClick(col, row);
     });
 
-    window.addEventListener('keydown', (e) => {
-      if (animating || !gameState) return;
-      if (gameState.phase !== 'command') return;
-
-      switch (e.key) {
-        case 'ArrowUp': case 'w': e.preventDefault(); handleDirection(DIR.UP); break;
-        case 'ArrowDown': case 's': e.preventDefault(); handleDirection(DIR.DOWN); break;
-        case 'ArrowLeft': case 'a': e.preventDefault(); handleDirection(DIR.LEFT); break;
-        case 'ArrowRight': case 'd': e.preventDefault(); handleDirection(DIR.RIGHT); break;
-        case 'Enter': case ' ': e.preventDefault(); handleConfirm(); break;
-        case 'Escape': e.preventDefault(); handleSkip(); break;
-        case '1': case '2': case '3': case '4': handleDistanceKey(Number(e.key)); break;
-      }
-    });
 
     // ─── Game actions ───────────────────────────────
     function handleCellClick(col, row) {
@@ -535,44 +520,38 @@
     }
 
     function handleCommandClick(col, row) {
+      const target = reachableCells.find(c => c.col === col && c.row === row);
+      if (target) {
+        net.send('setMove', { pieceId: selectedPieceId, dir: target.dir, dist: target.dist });
+        return;
+      }
+
       const piece = findPieceAtCell(col, row, false);
       if (piece && piece.alive) {
         selectedPieceId = piece.id;
-        chosenDir = null;
-        chosenDist = 0;
-        previewPath = null;
-        statusMsg = `已选中，按方向键移动`;
+        reachableCells = calcReachable(piece);
+        statusMsg = '点击高亮格子移动';
+        render();
+      } else {
+        selectedPieceId = null;
+        reachableCells = [];
+        statusMsg = '';
         render();
       }
     }
 
-    function handleDirection(dir) {
-      if (!selectedPieceId) { statusMsg = '先点击选择棋子'; render(); return; }
-      chosenDir = dir;
-      chosenDist = 1;
-      updatePreview();
-      const name = dir.dy > 0 ? '上' : dir.dy < 0 ? '下' : dir.dx < 0 ? '左' : '右';
-      statusMsg = `方向: ${name}，按1-4距离，Enter确认`;
-      render();
-    }
-
-    function handleDistanceKey(dist) {
-      if (!selectedPieceId || !chosenDir) return;
-      chosenDist = dist;
-      updatePreview();
-      render();
-    }
-
-    function updatePreview() {
-      if (!selectedPieceId || !chosenDir || !gameState) { previewPath = null; return; }
-      const piece = gameState.pieces.find(p => p.id === selectedPieceId);
-      if (!piece || !piece.tiles || !piece.tiles[0]) { previewPath = null; return; }
-      const start = piece.tiles[0];
-      const steps = [{ col: start.col, row: start.row }];
-      for (let i = 1; i <= chosenDist; i++) {
-        steps.push({ col: start.col + chosenDir.dx * i, row: start.row + chosenDir.dy * i });
+    function calcReachable(piece) {
+      if (!gameState || !piece.tiles || !piece.tiles[0]) return [];
+      const bonus = gameState.surgeDistanceBonus || 0;
+      const maxDist = getMaxDistance(piece, bonus);
+      const cells = [];
+      for (const dir of DIRECTIONS) {
+        const path = computePath(piece, dir, maxDist, gameState.board, gameState.pieces);
+        for (let i = 0; i < path.steps.length; i++) {
+          cells.push({ col: path.steps[i].col, row: path.steps[i].row, dir, dist: i + 1 });
+        }
       }
-      previewPath = steps;
+      return cells;
     }
 
     function handleConfirm() {
@@ -582,18 +561,14 @@
           statusMsg = '已提交选牌';
           render();
         }
-        return;
-      }
-      if (gameState?.phase === 'command') {
-        if (selectedPieceId && chosenDir && chosenDist > 0) {
-          net.send('setMove', { pieceId: selectedPieceId, dir: chosenDir, dist: chosenDist });
-        }
       }
     }
 
     function handleSkip() {
       if (pendingCard) { pendingCard = null; swapFirst = null; statusMsg = ''; render(); return; }
       if (gameState?.phase === 'command') {
+        selectedPieceId = null;
+        reachableCells = [];
         net.send('skipMove');
       }
     }
@@ -644,16 +619,15 @@
 
       renderer.drawPieces(gameState.pieces, myPlayer);
 
+      if (reachableCells.length > 0) {
+        renderer.highlightReachableCells(reachableCells);
+      }
+
       if (selectedPieceId) {
         const p = gameState.pieces.find(pp => pp.id === selectedPieceId);
         if (p && p.tiles && p.tiles[0]) {
           renderer.highlightCell(p.tiles[0].col, p.tiles[0].row, '#00ccff');
         }
-      }
-
-      if (previewPath && previewPath.length > 1) {
-        const p = gameState.pieces.find(pp => pp.id === selectedPieceId);
-        if (p) renderer.drawMovePreview(p, previewPath);
       }
 
       const remaining = (gameState.cards || []).filter(c => !(gameState.usedCards || []).includes(c.id)).map(c => c.name);
@@ -758,8 +732,10 @@
         chip.textContent = pieceLabel(p);
         chip.addEventListener('click', () => {
           if (p.alive && p.tiles && p.tiles[0]) {
-            selectedPieceId = p.id; chosenDir = null; chosenDist = 0; previewPath = null;
-            statusMsg = '已选中，按方向键'; render(); buildCommandUI();
+            selectedPieceId = p.id;
+            reachableCells = calcReachable(p);
+            statusMsg = '点击高亮格子移动';
+            render(); buildCommandUI();
           }
         });
         list.appendChild(chip);
@@ -784,7 +760,6 @@
       }
     }
 
-    document.getElementById('cmd-confirm-btn').addEventListener('click', handleConfirm);
     document.getElementById('cmd-skip-btn').addEventListener('click', handleSkip);
 
     function buildDestinyUI() {
@@ -815,6 +790,7 @@
       myPlayer = null;
       cardSelection = [];
       selectedPieceId = null;
+      reachableCells = [];
       statusMsg = '';
     });
   </script>

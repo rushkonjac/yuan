@@ -16,13 +16,23 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 app.use(express.static(join(__dirname, '..')));
 
+app.get('/health', (_req, res) => res.json({ status: 'ok', rooms: rooms.rooms.size }));
+
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ noServer: true });
 const rooms = new RoomManager();
 
 setInterval(() => rooms.cleanup(), 60000);
 
+server.on('upgrade', (request, socket, head) => {
+  console.log('Upgrade request received');
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
+});
+
 wss.on('connection', (ws) => {
+  console.log('WebSocket client connected');
   ws._player = null;
   ws._room = null;
   ws._roomCode = null;
@@ -90,6 +100,10 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`渊 server running on http://localhost:${PORT}`);
+wss.on('error', (err) => {
+  console.error('WSS error:', err.message);
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`渊 server running on port ${PORT}`);
 });

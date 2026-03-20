@@ -562,6 +562,25 @@ export class Renderer {
   }
 
   /**
+   * @param {{ col: number, row: number }[]} cells
+   */
+  highlightReachableCells(cells) {
+    const { ctx } = this;
+    ctx.save();
+    for (const { col, row } of cells) {
+      const { x, y } = this.cellToPixel(col, row);
+      ctx.fillStyle = 'rgba(0, 204, 255, 0.15)';
+      ctx.fillRect(x + 1, y + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+      ctx.strokeStyle = 'rgba(0, 204, 255, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(x + 3, y + 3, CELL_SIZE - 6, CELL_SIZE - 6);
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  /**
    * @param {number} col
    * @param {number} row
    * @param {string} color
