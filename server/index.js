@@ -19,7 +19,7 @@ app.use(express.static(join(__dirname, '..')));
 app.get('/health', (_req, res) => res.json({ status: 'ok', rooms: rooms.rooms.size }));
 
 const server = createServer(app);
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 const rooms = new RoomManager();
 
 setInterval(() => rooms.cleanup(), 60000);
@@ -91,6 +91,7 @@ wss.on('error', (err) => {
   console.error('WSS error:', err.message);
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`渊 server running on port ${PORT}`);
+// 使用 :: + ipv6Only:false 双栈监听，避免 PC 上 ws://localhost 走 ::1 而仅绑 0.0.0.0 时连不上
+server.listen({ port: PORT, host: '::', ipv6Only: false }, () => {
+  console.log(`渊 server running on port ${PORT} (dual-stack ::)`);
 });

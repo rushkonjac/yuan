@@ -343,21 +343,110 @@
     });
 
     let pendingAction = null;
-    function connectAndSend(action, data = {}) {
-      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${location.host}`;
-      pendingAction = { action, data };
-      net.disconnect();
-      net.connect(wsUrl);
-      setLobbyStatus('连接中...');
+    /** @type {ReturnType<typeof setTimeout>|null} */
+    let connectTimeoutId = null;
+    /** 每次点击「创建/加入」递增，用于取消上一次未完成的唤醒/连接 */
+    let connectAttemptId = 0;
+
+    /** PC 上 localhost 常解析为 IPv6(::1)，若服务端只监听 IPv4 会长时间挂起；强制用 127.0.0.1 走 IPv4 */
+    function websocketHostForPage() {
+      const h = location.hostname;
+      if (h === 'localhost' || h === '::1') {
+        return location.port ? `127.0.0.1:${location.port}` : '127.0.0.1';
+      }
+      return location.host;
     }
 
-    net.on('connected', () => {
+    /** Render 等托管：冷启动时先连 WebSocket 会长时间挂起；先拉 /health 把实例唤醒再连 WS */
+    function shouldPingHealthBeforeWs() {
+      const h = location.hostname;
+      if (h === 'localhost' || h === '127.0.0.1') return false;
+      return true;
+    }
+
+    function fetchHealthOnce() {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 12000);
+      return fetch(`${location.origin}/health`, { cache: 'no-store', signal: ctrl.signal })
+        .then((r) => {
+          clearTimeout(t);
+          return r.ok;
+        })
+        .catch(() => {
+          clearTimeout(t);
+          return false;
+        });
+    }
+
+    /** @param {(attempt: number, max: number) => void} [onTick] */
+    async function waitForServerWake(maxAttempts, onTick) {
+      for (let i = 0; i < maxAttempts; i++) {
+        if (onTick) onTick(i + 1, maxAttempts);
+        if (await fetchHealthOnce()) return true;
+        await new Promise((r) => setTimeout(r, 1600));
+      }
+      return false;
+    }
+
+    function connectAndSend(action, data = {}) {
+      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${websocketHostForPage()}`;
+      const attempt = ++connectAttemptId;
+      pendingAction = { action, data };
+      if (connectTimeoutId) {
+        clearTimeout(connectTimeoutId);
+        connectTimeoutId = null;
+      }
+      net.disconnect();
+
+      const startWs = () => {
+        if (attempt !== connectAttemptId) return;
+        setLobbyStatus('连接中…');
+        net.connect(wsUrl);
+        const ms = shouldPingHealthBeforeWs() ? 45000 : 20000;
+        connectTimeoutId = setTimeout(() => {
+          connectTimeoutId = null;
+          if (attempt !== connectAttemptId) return;
+          if (!pendingAction) return;
+          net.disconnect();
+          setLobbyStatus('连接超时，请再试一次（Render 免费版冷启动约需 30～60 秒）');
+          pendingAction = null;
+        }, ms);
+      };
+
+      if (shouldPingHealthBeforeWs()) {
+        setLobbyStatus('正在唤醒服务器（Render 冷启动）…');
+        waitForServerWake(40, (n, max) => {
+          if (attempt !== connectAttemptId) return;
+          setLobbyStatus(`正在唤醒服务器… ${n}/${max}（免费实例首次约 30～60 秒）`);
+        }).then((ok) => {
+          if (attempt !== connectAttemptId) return;
+          if (!ok) {
+            setLobbyStatus('服务器未响应，请稍后重试或刷新页面');
+            pendingAction = null;
+            return;
+          }
+          startWs();
+        });
+      } else {
+        startWs();
+      }
+    }
+
+    function mergeConnectedHandlers() {
+      if (connectTimeoutId) {
+        clearTimeout(connectTimeoutId);
+        connectTimeoutId = null;
+      }
+      document.getElementById('connection-status').textContent = '已连接';
+      document.getElementById('connection-status').className = 'status-connected';
       if (pendingAction) {
         net.send(pendingAction.action, pendingAction.data);
         pendingAction = null;
       }
-    });
+    }
+
+    net.on('connected', mergeConnectedHandlers);
 
     function setLobbyStatus(msg) {
       document.getElementById('lobby-status').textContent = msg;
@@ -439,11 +528,14 @@
     net.on('disconnected', () => {
       document.getElementById('connection-status').textContent = '连接已断开';
       document.getElementById('connection-status').className = 'status-disconnected';
-    });
-
-    net.on('connected', () => {
-      document.getElementById('connection-status').textContent = '已连接';
-      document.getElementById('connection-status').className = 'status-connected';
+      if (connectTimeoutId) {
+        clearTimeout(connectTimeoutId);
+        connectTimeoutId = null;
+      }
+      if (pendingAction) {
+        setLobbyStatus('无法连接服务器，请重试或刷新页面');
+        pendingAction = null;
+      }
     });
 
     // ─── Timer ──────────────────────────────────────
