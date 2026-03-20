@@ -75,7 +75,6 @@ export class Room {
     this.players = new Map();
     this.createdAt = Date.now();
     this.phaseTimer = null;
-    this.disconnectTimers = new Map();
   }
 
   addPlayer(ws) {
@@ -321,35 +320,8 @@ export class Room {
 
   handleDisconnect(player) {
     const other = player === 1 ? 2 : 1;
-    this.sendTo(other, { event: 'opponentDisconnected' });
-
-    this.disconnectTimers.set(player, setTimeout(() => {
-      this.sendTo(other, { event: 'opponentLeft' });
-      this.broadcast({ event: 'gameOver', winner: other, reason: '对手断线超时' });
-      this.clearPhaseTimer();
-    }, 30000));
-  }
-
-  handleReconnect(player, ws) {
-    this.players.set(player, ws);
-    ws._player = player;
-    ws._room = this;
-
-    const timer = this.disconnectTimers.get(player);
-    if (timer) {
-      clearTimeout(timer);
-      this.disconnectTimers.delete(player);
-    }
-
-    const other = player === 1 ? 2 : 1;
-    this.sendTo(other, { event: 'opponentReconnected' });
-    this.sendTo(player, {
-      event: 'gameStart',
-      player,
-      board: serializeBoard(this.game.board),
-      reconnect: true,
-    });
-    this.sendState(player);
+    this.sendTo(other, { event: 'gameOver', winner: null, reason: '对手已断开连接' });
+    this.clearPhaseTimer();
   }
 
   isEmpty() {
@@ -359,7 +331,6 @@ export class Room {
 
   destroy() {
     this.clearPhaseTimer();
-    for (const t of this.disconnectTimers.values()) clearTimeout(t);
   }
 }
 

@@ -68,21 +68,6 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (msg.action === 'reconnect') {
-      const code = msg.code?.toUpperCase();
-      const room = rooms.getRoom(code);
-      if (!room) {
-        ws.send(JSON.stringify({ event: 'error', message: '房间不存在' }));
-        return;
-      }
-      const player = msg.player;
-      if (player !== 1 && player !== 2) return;
-      room.handleReconnect(player, ws);
-      ws._roomCode = room.code;
-      console.log(`Player ${player} reconnected to room ${room.code}`);
-      return;
-    }
-
     if (ws._room && ws._player) {
       ws._room.handleAction(ws._player, msg);
     }
@@ -90,8 +75,10 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (ws._room && ws._player) {
+      const code = ws._roomCode;
       ws._room.handleDisconnect(ws._player);
-      console.log(`Player ${ws._player} disconnected from room ${ws._roomCode}`);
+      rooms.removeRoom(code);
+      console.log(`Player ${ws._player} disconnected, room ${code} dissolved`);
     }
   });
 

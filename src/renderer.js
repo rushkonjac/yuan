@@ -235,90 +235,91 @@ export class Renderer {
   _drawOnePiece(piece, currentPlayer) {
     const { ctx } = this;
     if (!piece.tiles || piece.tiles.length === 0) return;
-    const bounds = piecePixelBounds(piece);
     const isMine = piece.owner === currentPlayer;
-    const radius = Math.min(bounds.w, bounds.h) * 0.38;
+    const showRank = isMine || piece.revealed;
+    const r = CELL_SIZE * 0.38;
+
+    let fill = COLORS.enemyHidden;
+    let stroke = '#556688';
+    let label = '?';
+
+    if (isMine) {
+      if (piece.type === PIECE_TYPE.HEART) { fill = COLORS.heart; stroke = '#cc9900'; label = `♥${piece.currentRank}`; }
+      else if (piece.type === PIECE_TYPE.BOMB) { fill = COLORS.bomb; stroke = '#aa2222'; label = '💣'; }
+      else { fill = playerPieceColor(piece.owner); stroke = '#006688'; label = String(piece.currentRank); }
+    } else if (showRank) {
+      if (piece.type === PIECE_TYPE.HEART) { fill = COLORS.heart; stroke = '#cc9900'; label = `♥${piece.currentRank}`; }
+      else if (piece.type === PIECE_TYPE.BOMB) { fill = COLORS.bomb; stroke = '#aa2222'; label = '💣'; }
+      else { fill = playerPieceColor(piece.owner); stroke = piece.owner === 1 || piece.owner === '1' ? '#006688' : '#884422'; label = String(piece.currentRank); }
+    }
 
     ctx.save();
 
     if (!isMine) {
       const glow = enemyGlowParams(piece.bodySize);
       if (glow.blur > 0) {
-        ctx.strokeStyle = `rgba(136, 170, 204, ${glow.alpha})`;
-        ctx.lineWidth = glow.lineWidth;
-        ctx.shadowColor = '#88aacc';
-        ctx.shadowBlur = glow.blur;
-        ctx.beginPath();
-        ctx.arc(bounds.cx, bounds.cy, radius + 2, 0, Math.PI * 2);
-        ctx.stroke();
+        for (const t of piece.tiles) {
+          const { x, y } = this.cellToPixel(t.col, t.row);
+          ctx.strokeStyle = `rgba(136, 170, 204, ${glow.alpha})`;
+          ctx.lineWidth = glow.lineWidth;
+          ctx.shadowColor = '#88aacc';
+          ctx.shadowBlur = glow.blur;
+          ctx.beginPath();
+          ctx.arc(x + CELL_SIZE / 2, y + CELL_SIZE / 2, r + 2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
         ctx.shadowBlur = 0;
       }
     }
 
-    const showRank = isMine || piece.revealed;
-    let fill = COLORS.enemyHidden;
-    let stroke = '#556688';
-    let label = '?';
+    for (let i = 0; i < piece.tiles.length; i++) {
+      const t = piece.tiles[i];
+      const { x, y } = this.cellToPixel(t.col, t.row);
+      const cx = x + CELL_SIZE / 2;
+      const cy = y + CELL_SIZE / 2;
 
-    if (isMine) {
-      if (piece.type === PIECE_TYPE.HEART) {
-        fill = COLORS.heart;
-        stroke = '#cc9900';
-        label = `♥${piece.currentRank}`;
-      } else if (piece.type === PIECE_TYPE.BOMB) {
-        fill = COLORS.bomb;
-        stroke = '#aa2222';
-        label = '💣';
-      } else {
-        fill = playerPieceColor(piece.owner);
-        stroke = '#006688';
-        label = String(piece.currentRank);
-      }
-    } else if (showRank) {
-      if (piece.type === PIECE_TYPE.HEART) {
-        fill = COLORS.heart;
-        stroke = '#cc9900';
-        label = `♥${piece.currentRank}`;
-      } else if (piece.type === PIECE_TYPE.BOMB) {
-        fill = COLORS.bomb;
-        stroke = '#aa2222';
-        label = '💣';
-      } else {
-        fill = playerPieceColor(piece.owner);
-        stroke = piece.owner === 1 || piece.owner === '1' ? '#006688' : '#884422';
-        label = String(piece.currentRank);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.globalAlpha = i === 0 ? 0.92 : 0.7;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (i > 0) {
+        const prev = piece.tiles[i - 1];
+        const pp = this.cellToPixel(prev.col, prev.row);
+        ctx.strokeStyle = fill;
+        ctx.lineWidth = r * 0.8;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(pp.x + CELL_SIZE / 2, pp.y + CELL_SIZE / 2);
+        ctx.lineTo(cx, cy);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
       }
     }
 
-    ctx.beginPath();
-    ctx.arc(bounds.cx, bounds.cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = fill;
-    ctx.globalAlpha = 0.92;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = stroke;
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    const head = piece.tiles[0];
+    const hp = this.cellToPixel(head.col, head.row);
+    const hcx = hp.x + CELL_SIZE / 2;
+    const hcy = hp.y + CELL_SIZE / 2;
 
     ctx.font = piece.type === PIECE_TYPE.BOMB && (isMine || showRank)
-      ? `${Math.floor(radius * 1.1)}px serif`
-      : `bold ${Math.floor(radius * 0.95)}px ${this._monoFamily}`;
+      ? `${Math.floor(r * 1.1)}px serif`
+      : `bold ${Math.floor(r * 0.95)}px ${this._monoFamily}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = showRank && piece.type !== PIECE_TYPE.BOMB ? '#0a0e1a' : '#f0f0f0';
-    if (piece.type === PIECE_TYPE.BOMB && (isMine || showRank)) {
-      ctx.shadowColor = '#ff6666';
-      ctx.shadowBlur = 6;
-    } else if (showRank) {
-      ctx.shadowColor = fill;
-      ctx.shadowBlur = 4;
-    }
-    ctx.fillText(label, bounds.cx, bounds.cy);
+    if (showRank) { ctx.shadowColor = fill; ctx.shadowBlur = 4; }
+    ctx.fillText(label, hcx, hcy);
     ctx.shadowBlur = 0;
 
     if (piece.triggerCard) {
       const id = typeof piece.triggerCard === 'string' ? piece.triggerCard : piece.triggerCard.id;
-      this._drawTriggerCardIcon(bounds.x + bounds.w - 4, bounds.y + 4, id);
+      this._drawTriggerCardIcon(hp.x + CELL_SIZE - 4, hp.y + 4, id);
     }
 
     ctx.restore();

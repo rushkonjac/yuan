@@ -6,6 +6,7 @@
   <title>渊 — Yuan / Abyss</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
     body {
       background: #060a14;
       color: #88aacc;
@@ -16,6 +17,9 @@
       min-height: 100vh;
       padding: 16px;
       gap: 20px;
+      -webkit-user-select: none;
+      user-select: none;
+      overflow-x: hidden;
     }
 
     /* ─── Lobby ───────────────────────────────────── */
@@ -84,7 +88,7 @@
     /* ─── Game ────────────────────────────────────── */
     #game-wrapper { display: none; }
     #game-container { position: relative; }
-    canvas { display: block; border: 1px solid #1a2040; cursor: crosshair; }
+    canvas { display: block; border: 1px solid #1a2040; cursor: crosshair; max-width: 100%; height: auto; touch-action: none; }
 
     #side-panel {
       width: 280px;
@@ -184,6 +188,23 @@
     }
     .status-connected { color: #44cc66; }
     .status-disconnected { color: #ff6644; }
+
+    @media (max-width: 768px) {
+      body { flex-direction: column; align-items: center; padding: 8px; gap: 10px; }
+      #lobby h1 { font-size: 48px; letter-spacing: 16px; }
+      #lobby { min-height: 60vh; gap: 16px; }
+      .lobby-btn { width: 220px; padding: 12px; font-size: 15px; }
+      #room-code-display { font-size: 36px; letter-spacing: 8px; }
+      #join-input { width: 180px; font-size: 24px; }
+      #game-wrapper { flex-direction: column !important; align-items: center; width: 100%; }
+      #game-container { width: 100%; }
+      canvas { width: 100% !important; height: auto !important; }
+      #side-panel { width: 100%; max-width: 448px; }
+      .card-btn { padding: 10px 12px; font-size: 13px; }
+      .confirm-btn { padding: 12px; font-size: 14px; }
+      .destiny-btn { padding: 10px 12px; font-size: 13px; }
+      .piece-chip { padding: 6px 10px; font-size: 13px; }
+    }
   </style>
 </head>
 <body>
@@ -326,6 +347,7 @@
       const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${location.host}`;
       pendingAction = { action, data };
+      net.disconnect();
       net.connect(wsUrl);
       setLobbyStatus('连接中...');
     }
@@ -343,8 +365,6 @@
 
     // ─── Network events ─────────────────────────────
     net.on('roomCreated', (msg) => {
-      net.roomCode = msg.code;
-      net.player = msg.player;
       myPlayer = msg.player;
       document.getElementById('wait-section').style.display = 'block';
       document.getElementById('room-code-display').textContent = msg.code;
@@ -355,8 +375,6 @@
     });
 
     net.on('roomJoined', (msg) => {
-      net.roomCode = msg.code;
-      net.player = msg.player;
       myPlayer = msg.player;
       setLobbyStatus('已加入，游戏即将开始...');
     });
@@ -370,9 +388,7 @@
       lobby.style.display = 'none';
       gameWrapper.style.display = 'flex';
       renderer = new Renderer(canvas);
-      if (!msg.reconnect) {
-        cardSelection = [];
-      }
+      cardSelection = [];
     });
 
     net.on('stateUpdate', (msg) => {
@@ -419,18 +435,9 @@
       updateTimerBar();
     });
 
-    net.on('opponentDisconnected', () => {
-      document.getElementById('connection-status').textContent = '对手已断线，等待重连...';
-      document.getElementById('connection-status').className = 'status-disconnected';
-    });
-
-    net.on('opponentReconnected', () => {
-      document.getElementById('connection-status').textContent = '已连接';
-      document.getElementById('connection-status').className = 'status-connected';
-    });
 
     net.on('disconnected', () => {
-      document.getElementById('connection-status').textContent = '连接断开，重连中...';
+      document.getElementById('connection-status').textContent = '连接已断开';
       document.getElementById('connection-status').className = 'status-disconnected';
     });
 
@@ -585,10 +592,10 @@
     }
 
     function pieceLabel(p) {
-      if (p.owner !== myPlayer) return '?';
-      if (p.type === PIECE_TYPE.HEART) return `♥${p.currentRank}`;
-      if (p.type === PIECE_TYPE.BOMB) return '💣';
-      return `R${p.currentRank}`;
+      if (p.owner !== myPlayer) return `?·${p.bodySize}`;
+      if (p.type === PIECE_TYPE.HEART) return `♥${p.currentRank}·${p.bodySize}`;
+      if (p.type === PIECE_TYPE.BOMB) return `💣·${p.bodySize}`;
+      return `${p.currentRank}·${p.bodySize}`;
     }
 
     // ─── Animation ──────────────────────────────────

@@ -407,6 +407,56 @@ export class Game {
     if (st.destinyEffects.some((d) => d.id === 'resonance')) killer.revealed = true;
   }
 
+  /**
+   * Determine growth direction for the winner.
+   * - If the winner moved, grow behind the winner (opposite to its move dir).
+   * - If the winner was stationary (defender), grow toward where the attacker came from.
+   * In both cases _syncTilesToBodySize does `tail - moveDir`, so we return
+   * the "forward" direction in both scenarios.
+   */
+  _getGrowthDir(winner, collisionPieceA, move1, move2) {
+    if (move1 && move1.piece === winner) return move1.direction;
+    if (move2 && move2.piece === winner) return move2.direction;
+    const attacker = collisionPieceA === winner ? null : collisionPieceA;
+    if (attacker) {
+      if (move1 && move1.piece === attacker) return move1.direction;
+      if (move2 && move2.piece === attacker) return move2.direction;
+    }
+    return { dx: 0, dy: 1 };
+  }
+
+  /**
+   * Sync piece.tiles to match piece.bodySize after collision.
+   * Growth extends behind the head (opposite to growthDir).
+   */
+  _syncTilesToBodySize(piece, growthDir) {
+    const target = piece.bodySize;
+    while (piece.tiles.length > target) {
+      piece.tiles.pop();
+    }
+    while (piece.tiles.length < target) {
+      const tail = piece.tiles[piece.tiles.length - 1];
+      const newCol = tail.col - growthDir.dx;
+      const newRow = tail.row - growthDir.dy;
+      if (isInBounds(newCol, newRow)) {
+        piece.tiles.push({ col: newCol, row: newRow });
+      } else {
+        const dirs = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
+        let added = false;
+        for (const d of dirs) {
+          const fc = tail.col + d.dx;
+          const fr = tail.row + d.dy;
+          if (isInBounds(fc, fr)) {
+            const occupied = piece.tiles.some(t => t.col === fc && t.row === fr);
+            if (!occupied) { piece.tiles.push({ col: fc, row: fr }); added = true; break; }
+          }
+        }
+        if (!added) break;
+      }
+    }
+    console.log(`[SyncTiles] piece=${piece.id} bodySize=${piece.bodySize} tiles=${JSON.stringify(piece.tiles)} dir=${JSON.stringify(growthDir)}`);
+  }
+
   // --- Execute Phase ---
 
   executeMoves() {
@@ -446,10 +496,14 @@ export class Game {
     const sorted = [...collisions].sort((a, b) => a.time - b.time);
     for (const c of sorted) {
       if (!c.pieceA.alive || !c.pieceB.alive) continue;
+
       const result = resolveCollision(c.pieceA, c.pieceB);
+      console.log(`[Collision] A=${c.pieceA.id}(rank=${c.pieceA.currentRank},body=${c.pieceA.bodySize}) vs B=${c.pieceB.id}(rank=${c.pieceB.currentRank},body=${c.pieceB.bodySize}) => type=${result.type}`);
       applyCollisionResult(result, c.pieceA, c.pieceB);
 
       if (result.type === 'win' && result.winner) {
+        console.log(`[Collision] winner=${result.winner.id} newBody=${result.winner.bodySize} newRank=${result.winner.currentRank} tilesLen=${result.winner.tiles.length}`);
+        const growDir = this._getGrowthDir(result.winner, c.pieceA, move1, move2);
         movePieceTo(result.winner, c.col, c.row);
         if (result.loserA && !result.loserA.alive) {
           this._applyResonanceOnDeath(result.loserA, result.winner);
@@ -460,6 +514,15 @@ export class Game {
         if (this._hasShell(/** @type {1|2} */ (result.winner.owner))) {
           result.winner.bodySize = Math.min(4, result.winner.bodySize + 1);
         }
+        this._syncTilesToBodySize(result.winner, growDir);
+      }
+
+      if (result.type === 'mutual_death') {
+        c.pieceA.tiles = [];
+        c.pieceB.tiles = [];
+      } else if (result.type === 'win') {
+        const loser = result.winner === c.pieceA ? c.pieceB : c.pieceA;
+        if (!loser.alive) loser.tiles = [];
       }
     }
 

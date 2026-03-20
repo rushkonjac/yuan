@@ -82,14 +82,14 @@ export function computePath(piece, direction, distance, board, allPieces) {
     const col = primary.col + step * dx;
     const row = primary.row + step * dy;
 
-    if (!isInBounds(col, row) || !isPassable(board, col, row)) {
-      break;
+    let blocked = false;
+    for (const t of piece.tiles) {
+      const tc = t.col + step * dx;
+      const tr = t.row + step * dy;
+      if (!isInBounds(tc, tr) || !isPassable(board, tc, tr)) { blocked = true; break; }
+      if (findFriendlyAt(allPieces, tc, tr, piece)) { stoppedByFriendly = true; blocked = true; break; }
     }
-
-    if (findFriendlyAt(allPieces, col, row, piece)) {
-      stoppedByFriendly = true;
-      break;
-    }
+    if (blocked) break;
 
     const cell = board[col][row];
     if (cell.terrain === TERRAIN.CURRENT) {
@@ -99,7 +99,7 @@ export function computePath(piece, direction, distance, board, allPieces) {
 
     steps.push({ col, row });
 
-    if (piece.bodySize === 1 && cell.terrain === TERRAIN.RIFT && cell.riftPair) {
+    if (piece.tiles.length === 1 && cell.terrain === TERRAIN.RIFT && cell.riftPair) {
       riftTeleport = { col: cell.riftPair.col, row: cell.riftPair.row };
       break;
     }
@@ -208,10 +208,15 @@ export function findPieceAt(allPieces, col, row, excludePiece = null) {
  * @param {number} row
  */
 export function movePieceTo(piece, col, row) {
-  if (!piece.tiles[0]) piece.tiles[0] = { col, row };
-  else {
-    piece.tiles[0].col = col;
-    piece.tiles[0].row = row;
+  if (!piece.tiles[0]) {
+    piece.tiles[0] = { col, row };
+    return;
+  }
+  const dx = col - piece.tiles[0].col;
+  const dy = row - piece.tiles[0].row;
+  for (const t of piece.tiles) {
+    t.col += dx;
+    t.row += dy;
   }
 }
 
@@ -260,7 +265,15 @@ export function executeTurn(moveA, moveB, _board, allPieces) {
         if (!p.alive) continue;
         if (p === ev.piece || p.owner === ev.piece.owner) continue;
         const pos = sim.get(p.id);
-        if (pos && pos.col === targetCol && pos.row === targetRow) return p;
+        if (!pos) continue;
+        if (pos.col === targetCol && pos.row === targetRow) return p;
+        if (p.tiles.length > 1) {
+          const dx = pos.col - p.tiles[0].col;
+          const dy = pos.row - p.tiles[0].row;
+          for (let i = 1; i < p.tiles.length; i++) {
+            if ((p.tiles[i].col + dx) === targetCol && (p.tiles[i].row + dy) === targetRow) return p;
+          }
+        }
       }
       return null;
     })();
