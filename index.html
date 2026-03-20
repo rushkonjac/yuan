@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>渊 — Yuan / Abyss</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #060a14;
+      color: #88aacc;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 16px;
+      gap: 20px;
+    }
+
+    /* ─── Lobby ───────────────────────────────────── */
+    #lobby {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 80vh;
+      gap: 24px;
+    }
+    #lobby h1 {
+      font-size: 64px;
+      color: #00ccff;
+      text-shadow: 0 0 30px #00ccff44, 0 0 60px #00446644;
+      letter-spacing: 24px;
+    }
+    #lobby .subtitle {
+      color: #556688;
+      font-size: 14px;
+      margin-top: -12px;
+    }
+    .lobby-btn {
+      display: block;
+      width: 260px;
+      padding: 14px;
+      background: #0c1020;
+      border: 1px solid #2a3060;
+      border-radius: 6px;
+      color: #88aacc;
+      font-family: inherit;
+      font-size: 16px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .lobby-btn:hover { background: #141830; border-color: #00ccff; color: #00ccff; }
+    #lobby-status {
+      color: #ffcc00;
+      font-size: 14px;
+      min-height: 20px;
+      text-align: center;
+    }
+    #room-code-display {
+      font-size: 48px;
+      color: #00ccff;
+      letter-spacing: 12px;
+      text-shadow: 0 0 20px #00ccff44;
+    }
+    #join-input {
+      width: 200px;
+      padding: 12px;
+      background: #0c1020;
+      border: 1px solid #2a3060;
+      border-radius: 6px;
+      color: #00ccff;
+      font-family: inherit;
+      font-size: 28px;
+      text-align: center;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+    }
+    #join-input:focus { outline: none; border-color: #00ccff; }
+    #join-section, #wait-section { display: none; }
+
+    /* ─── Game ────────────────────────────────────── */
+    #game-wrapper { display: none; }
+    #game-container { position: relative; }
+    canvas { display: block; border: 1px solid #1a2040; cursor: crosshair; }
+
+    #side-panel {
+      width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel {
+      background: #0c1020;
+      border: 1px solid #1a2040;
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .panel h3 {
+      color: #aabbdd;
+      font-size: 13px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #1a2040;
+      padding-bottom: 4px;
+    }
+    .card-btn {
+      display: block;
+      width: 100%;
+      margin-bottom: 6px;
+      padding: 8px 10px;
+      background: #141828;
+      border: 1px solid #2a3060;
+      border-radius: 4px;
+      color: #88aacc;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .card-btn:hover { background: #1a2240; border-color: #4466aa; }
+    .card-btn.selected { background: #1a2a50; border-color: #00ccff; color: #00ccff; }
+    .card-btn.used { opacity: 0.4; cursor: default; }
+    .card-btn .card-type { color: #556688; font-size: 10px; }
+    .confirm-btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      background: #0a2a40;
+      border: 1px solid #00ccff;
+      border-radius: 4px;
+      color: #00ccff;
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .confirm-btn:hover { background: #0c3a55; }
+    .destiny-btn {
+      display: block;
+      width: 100%;
+      margin-bottom: 6px;
+      padding: 8px 10px;
+      background: #1a1028;
+      border: 1px solid #6644aa;
+      border-radius: 4px;
+      color: #bb99ee;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .destiny-btn:hover { background: #2a1a40; border-color: #9966cc; }
+    .piece-chip {
+      display: inline-block;
+      padding: 4px 8px;
+      background: #141828;
+      border: 1px solid #2a3060;
+      border-radius: 3px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin: 2px;
+    }
+    .piece-chip:hover { border-color: #00ccff; }
+    .piece-chip.selected { border-color: #00ccff; color: #00ccff; }
+    .piece-chip.dead { opacity: 0.3; cursor: default; text-decoration: line-through; }
+    .hidden { display: none !important; }
+    #timer-bar {
+      height: 4px;
+      background: #00ccff;
+      transition: width 0.3s linear;
+      border-radius: 2px;
+      margin-bottom: 8px;
+    }
+    #connection-status {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 3px;
+      text-align: center;
+    }
+    .status-connected { color: #44cc66; }
+    .status-disconnected { color: #ff6644; }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ Lobby ═══ -->
+  <div id="lobby">
+    <h1>渊</h1>
+    <p class="subtitle">深渊对弈 — 暗子推理 · 心理博弈</p>
+    <button class="lobby-btn" id="btn-create">创建房间</button>
+    <button class="lobby-btn" id="btn-join-show">加入房间</button>
+
+    <div id="join-section">
+      <input type="text" id="join-input" maxlength="4" placeholder="输入房间码">
+      <button class="lobby-btn" id="btn-join" style="margin-top:12px;">加入</button>
+    </div>
+
+    <div id="wait-section">
+      <p style="color:#556688;">房间码</p>
+      <div id="room-code-display"></div>
+      <p style="color:#ffcc00;margin-top:12px;">等待对手加入...</p>
+    </div>
+
+    <p id="lobby-status"></p>
+  </div>
+
+  <!-- ═══ Game ═══ -->
+  <div id="game-wrapper">
+    <div id="game-container">
+      <canvas id="game-canvas"></canvas>
+    </div>
+
+    <div id="side-panel">
+      <div id="connection-status" class="status-connected">已连接</div>
+      <div id="timer-bar" style="width:100%"></div>
+
+      <div id="card-select-panel" class="panel hidden">
+        <h3>选牌阶段 — 选择3张卡牌</h3>
+        <div id="card-select-list"></div>
+        <button id="card-confirm-btn" class="confirm-btn">确认选牌</button>
+      </div>
+
+      <div id="deploy-panel" class="panel hidden">
+        <h3>部署阶段</h3>
+        <p style="font-size:12px;margin-bottom:8px;">点击蓝色区域放置棋子</p>
+        <div id="deploy-piece-list"></div>
+        <p id="deploy-status" style="font-size:11px;color:#556688;margin-top:8px;"></p>
+      </div>
+
+      <div id="command-panel" class="panel hidden">
+        <h3>指令阶段</h3>
+        <div id="piece-list"></div>
+        <p style="font-size:11px;color:#556677;margin-top:8px;">点击棋子 → 方向键 → 数字键 → Enter</p>
+        <div style="margin-top:8px;">
+          <h3>渊力卡</h3>
+          <div id="card-use-list"></div>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px;">
+          <button id="cmd-confirm-btn" class="confirm-btn" style="flex:1;">确认 (Enter)</button>
+          <button id="cmd-skip-btn" class="confirm-btn" style="flex:1;border-color:#ff6644;color:#ff6644;">跳过 (Esc)</button>
+        </div>
+      </div>
+
+      <div id="destiny-panel" class="panel hidden">
+        <h3>天命阶段 — 选择一个效果</h3>
+        <div id="destiny-list"></div>
+      </div>
+
+      <div id="waiting-panel" class="panel hidden">
+        <h3>等待对手...</h3>
+        <p style="font-size:12px;color:#556688;">对手正在操作</p>
+      </div>
+
+      <div id="gameover-panel" class="panel hidden">
+        <h3>对局结束</h3>
+        <p id="gameover-text" style="font-size:14px;margin-bottom:8px;"></p>
+        <button id="restart-btn" class="confirm-btn">返回大厅</button>
+      </div>
+
+      <div class="panel">
+        <h3>操作说明</h3>
+        <div style="font-size:11px;color:#556677;line-height:1.5;">
+          <b>选牌：</b>点击3张 → 确认<br>
+          <b>部署：</b>点击蓝色区域<br>
+          <b>指令：</b>点击棋子 → WASD → 1-4 → Enter<br>
+          <b>跳过：</b>Esc
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CARD_POOL, PHASE, PIECE_TYPE, BOARD_COLS, BOARD_ROWS, CELL_SIZE, DIR } from './src/types.js';
+    import { Renderer } from './src/renderer.js';
+    import { Network } from './src/network.js';
+
+    // ─── State ──────────────────────────────────────
+    const net = new Network();
+    let renderer = null;
+    let myPlayer = null;
+    let gameState = null;
+    let selectedPieceId = null;
+    let chosenDir = null;
+    let chosenDist = 0;
+    let previewPath = null;
+    let cardSelection = [];
+    let pendingCard = null;
+    let swapFirst = null;
+    let statusMsg = '';
+    let timerEnd = 0;
+    let timerDuration = 0;
+    let animating = false;
+
+    // ─── DOM refs ───────────────────────────────────
+    const lobby = document.getElementById('lobby');
+    const gameWrapper = document.getElementById('game-wrapper');
+    const canvas = document.getElementById('game-canvas');
+    const panels = {
+      cardSelect: document.getElementById('card-select-panel'),
+      deploy: document.getElementById('deploy-panel'),
+      command: document.getElementById('command-panel'),
+      destiny: document.getElementById('destiny-panel'),
+      waiting: document.getElementById('waiting-panel'),
+      gameover: document.getElementById('gameover-panel'),
+    };
+
+    // ─── Lobby ──────────────────────────────────────
+    document.getElementById('btn-create').addEventListener('click', () => {
+      connectAndSend('create');
+    });
+    document.getElementById('btn-join-show').addEventListener('click', () => {
+      document.getElementById('join-section').style.display = 'block';
+      document.getElementById('join-input').focus();
+    });
+    document.getElementById('btn-join').addEventListener('click', () => {
+      const code = document.getElementById('join-input').value.trim().toUpperCase();
+      if (code.length !== 4) { setLobbyStatus('请输入4位房间码'); return; }
+      connectAndSend('join', { code });
+    });
+    document.getElementById('join-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btn-join').click();
+    });
+
+    function connectAndSend(action, data = {}) {
+      const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${location.host}`;
+      net.connect(wsUrl);
+      net.on('connected', () => {
+        net.send(action, data);
+      });
+      setLobbyStatus('连接中...');
+    }
+
+    function setLobbyStatus(msg) {
+      document.getElementById('lobby-status').textContent = msg;
+    }
+
+    // ─── Network events ─────────────────────────────
+    net.on('roomCreated', (msg) => {
+      net.roomCode = msg.code;
+      net.player = msg.player;
+      myPlayer = msg.player;
+      document.getElementById('wait-section').style.display = 'block';
+      document.getElementById('room-code-display').textContent = msg.code;
+      document.getElementById('btn-create').style.display = 'none';
+      document.getElementById('btn-join-show').style.display = 'none';
+      document.getElementById('join-section').style.display = 'none';
+      setLobbyStatus('');
+    });
+
+    net.on('roomJoined', (msg) => {
+      net.roomCode = msg.code;
+      net.player = msg.player;
+      myPlayer = msg.player;
+      setLobbyStatus('已加入，游戏即将开始...');
+    });
+
+    net.on('error', (msg) => {
+      setLobbyStatus(msg.message || '发生错误');
+    });
+
+    net.on('gameStart', (msg) => {
+      myPlayer = msg.player;
+      lobby.style.display = 'none';
+      gameWrapper.style.display = 'flex';
+      renderer = new Renderer(canvas);
+      if (!msg.reconnect) {
+        cardSelection = [];
+      }
+    });
+
+    net.on('stateUpdate', (msg) => {
+      gameState = msg;
+      render();
+      updateUI();
+    });
+
+    net.on('turnResult', (msg) => {
+      if (msg.collisions && msg.collisions.length > 0) {
+        animating = true;
+        animateCollisions(msg.collisions, 0, () => {
+          animating = false;
+        });
+      }
+    });
+
+    net.on('moveAccepted', () => {
+      selectedPieceId = null;
+      chosenDir = null;
+      chosenDist = 0;
+      previewPath = null;
+      statusMsg = '等待对手...';
+      render();
+    });
+
+    net.on('cardResult', (msg) => {
+      pendingCard = null;
+      swapFirst = null;
+      if (msg.cardId === 'scout' && msg.result) {
+        statusMsg = msg.result.isHeart ? '侦查结果：是渊心！' : '侦查结果：不是渊心';
+      } else {
+        statusMsg = '卡牌已使用';
+      }
+    });
+
+    net.on('gameOver', (msg) => {
+      statusMsg = msg.winner
+        ? `玩家${msg.winner}获胜！${msg.reason}`
+        : `平局 — ${msg.reason}`;
+    });
+
+    net.on('timerStart', (msg) => {
+      timerDuration = msg.duration;
+      timerEnd = Date.now() + msg.duration;
+      updateTimerBar();
+    });
+
+    net.on('opponentDisconnected', () => {
+      document.getElementById('connection-status').textContent = '对手已断线，等待重连...';
+      document.getElementById('connection-status').className = 'status-disconnected';
+    });
+
+    net.on('opponentReconnected', () => {
+      document.getElementById('connection-status').textContent = '已连接';
+      document.getElementById('connection-status').className = 'status-connected';
+    });
+
+    net.on('disconnected', () => {
+      document.getElementById('connection-status').textContent = '连接断开，重连中...';
+      document.getElementById('connection-status').className = 'status-disconnected';
+    });
+
+    net.on('connected', () => {
+      document.getElementById('connection-status').textContent = '已连接';
+      document.getElementById('connection-status').className = 'status-connected';
+    });
+
+    // ─── Timer ──────────────────────────────────────
+    function updateTimerBar() {
+      const bar = document.getElementById('timer-bar');
+      const remaining = Math.max(0, timerEnd - Date.now());
+      const pct = timerDuration > 0 ? (remaining / timerDuration) * 100 : 100;
+      bar.style.width = pct + '%';
+      bar.style.background = pct < 20 ? '#ff4444' : pct < 50 ? '#ffcc00' : '#00ccff';
+      if (remaining > 0) requestAnimationFrame(updateTimerBar);
+    }
+
+    // ─── Canvas input ───────────────────────────────
+    canvas.addEventListener('click', (e) => {
+      if (animating || !gameState || !renderer) return;
+      const rect = canvas.getBoundingClientRect();
+      const sx = canvas.width / rect.width;
+      const sy = canvas.height / rect.height;
+      const px = (e.clientX - rect.left) * sx;
+      const py = (e.clientY - rect.top) * sy;
+      const BOARD_H = BOARD_ROWS * CELL_SIZE;
+      if (py >= BOARD_H) return;
+
+      const { col, row } = renderer.pixelToCell(px, py);
+      if (col < 0 || col >= BOARD_COLS || row < 0 || row >= BOARD_ROWS) return;
+
+      handleCellClick(col, row);
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (animating || !gameState) return;
+      if (gameState.phase !== 'command') return;
+
+      switch (e.key) {
+        case 'ArrowUp': case 'w': e.preventDefault(); handleDirection(DIR.UP); break;
+        case 'ArrowDown': case 's': e.preventDefault(); handleDirection(DIR.DOWN); break;
+        case 'ArrowLeft': case 'a': e.preventDefault(); handleDirection(DIR.LEFT); break;
+        case 'ArrowRight': case 'd': e.preventDefault(); handleDirection(DIR.RIGHT); break;
+        case 'Enter': case ' ': e.preventDefault(); handleConfirm(); break;
+        case 'Escape': e.preventDefault(); handleSkip(); break;
+        case '1': case '2': case '3': case '4': handleDistanceKey(Number(e.key)); break;
+      }
+    });
+
+    // ─── Game actions ───────────────────────────────
+    function handleCellClick(col, row) {
+      const phase = gameState.phase;
+
+      if (phase === 'deploy') {
+        handleDeployClick(col, row);
+        return;
+      }
+
+      if (phase === 'command') {
+        if (pendingCard === 'scout') {
+          const enemy = findPieceAtCell(col, row, true);
+          if (enemy) { net.send('useCard', { cardId: 'scout', target: { targetPieceId: enemy.id } }); pendingCard = null; }
+          return;
+        }
+        if (pendingCard === 'reef') {
+          net.send('useCard', { cardId: 'reef', target: { col, row } });
+          pendingCard = null;
+          return;
+        }
+        if (pendingCard === 'swap') {
+          const p = findPieceAtCell(col, row, false);
+          if (!p) return;
+          if (!swapFirst) { swapFirst = p.id; statusMsg = '暗流：选第二枚棋子'; render(); return; }
+          net.send('useCard', { cardId: 'swap', target: { pieceId1: swapFirst, pieceId2: p.id } });
+          pendingCard = null; swapFirst = null;
+          return;
+        }
+        if (pendingCard && ['shield','blade','blast'].includes(pendingCard)) {
+          const p = findPieceAtCell(col, row, false);
+          if (p) { net.send('useCard', { cardId: pendingCard, target: { pieceId: p.id } }); pendingCard = null; }
+          return;
+        }
+        handleCommandClick(col, row);
+      }
+    }
+
+    function handleDeployClick(col, row) {
+      const myPieces = gameState.pieces.filter(p => p.owner === myPlayer);
+      const undeployed = myPieces.filter(p => !p.tiles || p.tiles.length === 0);
+
+      const onCell = findPieceAtCell(col, row, false);
+      if (onCell) { selectedPieceId = onCell.id; render(); return; }
+
+      let pieceId = selectedPieceId;
+      if (!pieceId && undeployed.length > 0) pieceId = undeployed[0].id;
+      if (pieceId) {
+        net.send('deploy', { pieceId, col, row });
+        selectedPieceId = null;
+      }
+    }
+
+    function handleCommandClick(col, row) {
+      const piece = findPieceAtCell(col, row, false);
+      if (piece && piece.alive) {
+        selectedPieceId = piece.id;
+        chosenDir = null;
+        chosenDist = 0;
+        previewPath = null;
+        statusMsg = `已选中，按方向键移动`;
+        render();
+      }
+    }
+
+    function handleDirection(dir) {
+      if (!selectedPieceId) { statusMsg = '先点击选择棋子'; render(); return; }
+      chosenDir = dir;
+      chosenDist = 1;
+      updatePreview();
+      const name = dir.dy > 0 ? '上' : dir.dy < 0 ? '下' : dir.dx < 0 ? '左' : '右';
+      statusMsg = `方向: ${name}，按1-4距离，Enter确认`;
+      render();
+    }
+
+    function handleDistanceKey(dist) {
+      if (!selectedPieceId || !chosenDir) return;
+      chosenDist = dist;
+      updatePreview();
+      render();
+    }
+
+    function updatePreview() {
+      if (!selectedPieceId || !chosenDir || !gameState) { previewPath = null; return; }
+      const piece = gameState.pieces.find(p => p.id === selectedPieceId);
+      if (!piece || !piece.tiles || !piece.tiles[0]) { previewPath = null; return; }
+      const start = piece.tiles[0];
+      const steps = [{ col: start.col, row: start.row }];
+      for (let i = 1; i <= chosenDist; i++) {
+        steps.push({ col: start.col + chosenDir.dx * i, row: start.row + chosenDir.dy * i });
+      }
+      previewPath = steps;
+    }
+
+    function handleConfirm() {
+      if (gameState?.phase === 'card_select') {
+        if (cardSelection.length === 3) {
+          net.send('selectCards', { cards: cardSelection });
+          statusMsg = '已提交选牌';
+          render();
+        }
+        return;
+      }
+      if (gameState?.phase === 'command') {
+        if (selectedPieceId && chosenDir && chosenDist > 0) {
+          net.send('setMove', { pieceId: selectedPieceId, dir: chosenDir, dist: chosenDist });
+        }
+      }
+    }
+
+    function handleSkip() {
+      if (pendingCard) { pendingCard = null; swapFirst = null; statusMsg = ''; render(); return; }
+      if (gameState?.phase === 'command') {
+        net.send('skipMove');
+      }
+    }
+
+    // ─── Helpers ────────────────────────────────────
+    function findPieceAtCell(col, row, isEnemy) {
+      if (!gameState) return null;
+      return gameState.pieces.find(p => {
+        if (!p.alive || !p.tiles) return false;
+        const match = p.tiles.some(t => t.col === col && t.row === row);
+        if (!match) return false;
+        return isEnemy ? p.owner !== myPlayer : p.owner === myPlayer;
+      }) || null;
+    }
+
+    function pieceLabel(p) {
+      if (p.owner !== myPlayer) return '?';
+      if (p.type === PIECE_TYPE.HEART) return `♥${p.currentRank}`;
+      if (p.type === PIECE_TYPE.BOMB) return '💣';
+      return `R${p.currentRank}`;
+    }
+
+    // ─── Animation ──────────────────────────────────
+    function animateCollisions(collisions, idx, done) {
+      if (idx >= collisions.length) { done(); return; }
+      const c = collisions[idx];
+      const dur = 600;
+      const start = performance.now();
+      const tick = () => {
+        const p = Math.min(1, (performance.now() - start) / dur);
+        render();
+        if (renderer) renderer.drawCollisionAnimation(c.col, c.row, c.isExplosion, p);
+        if (p < 1) requestAnimationFrame(tick);
+        else animateCollisions(collisions, idx + 1, done);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    // ─── Rendering ──────────────────────────────────
+    function render() {
+      if (!renderer || !gameState) return;
+      renderer.clear();
+      renderer.drawBoard(gameState.board);
+
+      if (gameState.phase === 'deploy') {
+        renderer.drawDeployZone(myPlayer);
+      }
+
+      renderer.drawPieces(gameState.pieces, myPlayer);
+
+      if (selectedPieceId) {
+        const p = gameState.pieces.find(pp => pp.id === selectedPieceId);
+        if (p && p.tiles && p.tiles[0]) {
+          renderer.highlightCell(p.tiles[0].col, p.tiles[0].row, '#00ccff');
+        }
+      }
+
+      if (previewPath && previewPath.length > 1) {
+        const p = gameState.pieces.find(pp => pp.id === selectedPieceId);
+        if (p) renderer.drawMovePreview(p, previewPath);
+      }
+
+      const remaining = (gameState.cards || []).filter(c => !(gameState.usedCards || []).includes(c.id)).map(c => c.name);
+      const used = (gameState.cards || []).filter(c => (gameState.usedCards || []).includes(c.id)).map(c => c.name);
+
+      renderer.drawUI({
+        turn: gameState.turn,
+        maxTurns: 15,
+        phase: gameState.phase,
+        currentPlayer: myPlayer,
+        cardsRemaining: remaining,
+        cardsUsed: used,
+        destinyEffects: gameState.destinyEffects || [],
+        instructions: statusMsg,
+      });
+    }
+
+    // ─── UI panels ──────────────────────────────────
+    function hideAllPanels() {
+      Object.values(panels).forEach(p => p.classList.add('hidden'));
+    }
+
+    function updateUI() {
+      if (!gameState) return;
+      hideAllPanels();
+      const phase = gameState.phase;
+
+      if (phase === 'card_select') {
+        panels.cardSelect.classList.remove('hidden');
+        buildCardSelectUI();
+      } else if (phase === 'deploy') {
+        panels.deploy.classList.remove('hidden');
+        buildDeployUI();
+      } else if (phase === 'destiny') {
+        if (gameState.destinyChoices) {
+          panels.destiny.classList.remove('hidden');
+          buildDestinyUI();
+        } else {
+          panels.waiting.classList.remove('hidden');
+        }
+      } else if (phase === 'command') {
+        if (gameState.commandSubmitted) {
+          panels.waiting.classList.remove('hidden');
+        } else {
+          panels.command.classList.remove('hidden');
+          buildCommandUI();
+        }
+      } else if (phase === 'game_over') {
+        panels.gameover.classList.remove('hidden');
+        const r = gameState.gameResult;
+        document.getElementById('gameover-text').textContent = r
+          ? (r.winner ? `玩家${r.winner}获胜！${r.reason}` : `平局 — ${r.reason}`)
+          : '游戏结束';
+      }
+    }
+
+    function buildCardSelectUI() {
+      const list = document.getElementById('card-select-list');
+      list.innerHTML = '';
+      for (const card of CARD_POOL) {
+        const btn = document.createElement('button');
+        btn.className = 'card-btn' + (cardSelection.includes(card.id) ? ' selected' : '');
+        btn.innerHTML = `<b>${card.name}</b> <span class="card-type">[${card.type === 'instant' ? '即时' : '触发'}]</span><br><span style="font-size:11px;color:#667788;">${card.desc}</span>`;
+        btn.addEventListener('click', () => {
+          const idx = cardSelection.indexOf(card.id);
+          if (idx >= 0) cardSelection.splice(idx, 1);
+          else if (cardSelection.length < 3) cardSelection.push(card.id);
+          buildCardSelectUI();
+        });
+        list.appendChild(btn);
+      }
+    }
+
+    document.getElementById('card-confirm-btn').addEventListener('click', handleConfirm);
+
+    function buildDeployUI() {
+      const list = document.getElementById('deploy-piece-list');
+      list.innerHTML = '';
+      const myPieces = (gameState.pieces || []).filter(p => p.owner === myPlayer);
+      for (const p of myPieces) {
+        const chip = document.createElement('span');
+        chip.className = 'piece-chip' + (selectedPieceId === p.id ? ' selected' : '');
+        chip.textContent = pieceLabel(p);
+        if (p.tiles && p.tiles.length > 0) chip.style.opacity = '0.4';
+        chip.addEventListener('click', () => {
+          if (!p.tiles || p.tiles.length === 0) { selectedPieceId = p.id; render(); buildDeployUI(); }
+        });
+        list.appendChild(chip);
+      }
+      const undeployed = myPieces.filter(p => !p.tiles || p.tiles.length === 0);
+      document.getElementById('deploy-status').textContent =
+        `己方: ${gameState.deployedCount}/8  |  对手: ${gameState.opponentDeployedCount}/8  |  待部署: ${undeployed.length}`;
+    }
+
+    function buildCommandUI() {
+      const list = document.getElementById('piece-list');
+      list.innerHTML = '';
+      const myPieces = (gameState.pieces || []).filter(p => p.owner === myPlayer);
+      for (const p of myPieces) {
+        const chip = document.createElement('span');
+        chip.className = 'piece-chip' + (!p.alive ? ' dead' : '') + (selectedPieceId === p.id ? ' selected' : '');
+        chip.textContent = pieceLabel(p);
+        chip.addEventListener('click', () => {
+          if (p.alive && p.tiles && p.tiles[0]) {
+            selectedPieceId = p.id; chosenDir = null; chosenDist = 0; previewPath = null;
+            statusMsg = '已选中，按方向键'; render(); buildCommandUI();
+          }
+        });
+        list.appendChild(chip);
+      }
+
+      const cardList = document.getElementById('card-use-list');
+      cardList.innerHTML = '';
+      for (const card of (gameState.cards || [])) {
+        const btn = document.createElement('button');
+        btn.className = 'card-btn';
+        const isUsed = (gameState.usedCards || []).includes(card.id);
+        if (isUsed) btn.classList.add('used');
+        btn.innerHTML = `<b>${card.name}</b> <span class="card-type">[${card.type === 'instant' ? '即时' : '触发'}]</span>`;
+        btn.addEventListener('click', () => {
+          if (isUsed || gameState.cardUsedThisTurn) return;
+          pendingCard = card.id;
+          swapFirst = null;
+          statusMsg = card.type === 'instant' ? `${card.name}：选择目标` : `${card.name}：选择己方棋子`;
+          render();
+        });
+        cardList.appendChild(btn);
+      }
+    }
+
+    document.getElementById('cmd-confirm-btn').addEventListener('click', handleConfirm);
+    document.getElementById('cmd-skip-btn').addEventListener('click', handleSkip);
+
+    function buildDestinyUI() {
+      const list = document.getElementById('destiny-list');
+      list.innerHTML = '';
+      for (const d of (gameState.destinyChoices || [])) {
+        const btn = document.createElement('button');
+        btn.className = 'destiny-btn';
+        btn.innerHTML = `<b>${d.name}</b> <span style="color:#665588;font-size:10px;">[${d.type === 'instant' ? '即时' : '持续'}]</span><br><span style="font-size:11px;">${d.desc}</span>`;
+        btn.addEventListener('click', () => {
+          net.send('selectDestiny', { destinyId: d.id });
+          statusMsg = '等待对手选择天命...';
+          render();
+        });
+        list.appendChild(btn);
+      }
+    }
+
+    document.getElementById('restart-btn').addEventListener('click', () => {
+      net.disconnect();
+      gameWrapper.style.display = 'none';
+      lobby.style.display = 'flex';
+      document.getElementById('wait-section').style.display = 'none';
+      document.getElementById('join-section').style.display = 'none';
+      document.getElementById('btn-create').style.display = 'block';
+      document.getElementById('btn-join-show').style.display = 'block';
+      gameState = null;
+      myPlayer = null;
+      cardSelection = [];
+      selectedPieceId = null;
+      statusMsg = '';
+    });
+  </script>
+</body>
+</html>
