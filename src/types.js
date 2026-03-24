@@ -3,28 +3,28 @@
  */
 
 /** @type {number} */
-export const BOARD_COLS = 7;
+export const BOARD_COLS = 9;
 /** @type {number} */
-export const BOARD_ROWS = 9;
+export const BOARD_ROWS = 13;
 /** @type {number} */
-export const CELL_SIZE = 64;
+export const CELL_SIZE = 48;
 /** @type {number} */
-export const MAX_TURNS = 15;
+export const MAX_TURNS = 25;
 /** @type {readonly number[]} */
-export const DESTINY_TURNS = Object.freeze([4, 8, 12]);
+export const DESTINY_TURNS = Object.freeze([5, 10, 15, 20]);
 /** @type {number} */
 export const SIMULATION_TIME = 2.0;
 
 /**
- * Body size → movement / visibility configuration.
- * @typedef {{ tiles: number, speed: number, maxDist: number, glow: 'none'|'dim'|'bright'|'intense' }} BodyConfigEntry
- * @type {Readonly<Record<1|2|3|4, BodyConfigEntry>>}
+ * Body size → movement / vision configuration.
+ * vision: Manhattan-distance radius for fog of war.
+ * @typedef {{ tiles: number, speed: number, maxDist: number, vision: number }} BodyConfigEntry
+ * @type {Readonly<Record<1|2|3, BodyConfigEntry>>}
  */
 export const BODY_CONFIG = Object.freeze({
-  1: { tiles: 1, speed: 2.0, maxDist: 4, glow: 'none' },
-  2: { tiles: 2, speed: 1.5, maxDist: 3, glow: 'dim' },
-  3: { tiles: 3, speed: 1.0, maxDist: 2, glow: 'bright' },
-  4: { tiles: 4, speed: 0.5, maxDist: 1, glow: 'intense' },
+  1: { tiles: 1, speed: 2.0, maxDist: 4, vision: 2 },
+  2: { tiles: 2, speed: 1.5, maxDist: 3, vision: 3 },
+  3: { tiles: 3, speed: 1.0, maxDist: 2, vision: 4 },
 });
 
 /**

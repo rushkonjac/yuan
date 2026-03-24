@@ -295,7 +295,7 @@
   </div>
 
   <script type="module">
-    import { CARD_POOL, PHASE, PIECE_TYPE, BOARD_COLS, BOARD_ROWS, CELL_SIZE, DIR, DIRECTIONS } from './src/types.js';
+    import { CARD_POOL, PHASE, PIECE_TYPE, BOARD_COLS, BOARD_ROWS, CELL_SIZE, DIR, DIRECTIONS, BODY_CONFIG } from './src/types.js';
     import { Renderer } from './src/renderer.js';
     import { Network } from './src/network.js';
     import { computePath, getMaxDistance } from './src/movement.js';
@@ -314,6 +314,8 @@
     let timerEnd = 0;
     let timerDuration = 0;
     let animating = false;
+    let turnAnimation = null;
+    let pendingStateUpdate = null;
 
     // ─── DOM refs ───────────────────────────────────
     const lobby = document.getElementById('lobby');
@@ -452,6 +454,181 @@
       document.getElementById('lobby-status').textContent = msg;
     }
 
+    function clonePieces(pieces) {
+      return (pieces || []).map((p) => ({
+        ...p,
+        tiles: (p.tiles || []).map((t) => ({ col: t.col, row: t.row })),
+      }));
+    }
+
+    function encodeCell(col, row) {
+      return col * BOARD_ROWS + row;
+    }
+
+    function roundedTile(tile) {
+      return { col: Math.round(tile.col), row: Math.round(tile.row) };
+    }
+
+    function computeVisibleCellsForPieces(pieces, player) {
+      const visible = new Set();
+      for (const p of pieces) {
+        if (p.owner !== player || !p.alive) continue;
+        const radius = (BODY_CONFIG[Math.min(3, Math.max(1, p.bodySize))] || BODY_CONFIG[1]).vision;
+        for (const tile of (p.tiles || [])) {
+          const rt = roundedTile(tile);
+          for (let dc = -radius; dc <= radius; dc += 1) {
+            for (let dr = -radius; dr <= radius; dr += 1) {
+              if (Math.abs(dc) + Math.abs(dr) > radius) continue;
+              const c = rt.col + dc;
+              const r = rt.row + dr;
+              if (c >= 0 && c < BOARD_COLS && r >= 0 && r < BOARD_ROWS) {
+                visible.add(encodeCell(c, r));
+              }
+            }
+          }
+        }
+      }
+      return visible;
+    }
+
+    function filterPiecesForView(pieces, player, visibleCells, phase) {
+      const out = [];
+      for (const p of pieces) {
+        const isEnemy = p.owner !== player;
+        if (!isEnemy) {
+          out.push({
+            ...p,
+            tiles: (p.tiles || []).map((t) => ({ col: t.col, row: t.row })),
+          });
+          continue;
+        }
+        if (phase === 'deploy') continue;
+        const visTiles = (p.tiles || []).filter((t) => {
+          const rt = roundedTile(t);
+          return visibleCells.has(encodeCell(rt.col, rt.row));
+        });
+        if (visTiles.length === 0 && p.alive) continue;
+        out.push({
+          ...p,
+          bodySize: visTiles.length,
+          tiles: visTiles,
+        });
+      }
+      return out;
+    }
+
+    function buildPieceEventMap(moveEvents) {
+      const map = new Map();
+      for (const ev of (moveEvents || [])) {
+        const list = map.get(ev.pieceId) || [];
+        list.push(ev);
+        map.set(ev.pieceId, list);
+      }
+      for (const list of map.values()) {
+        list.sort((a, b) => a.time - b.time);
+      }
+      return map;
+    }
+
+    function animatedPiecesAtTime(startPieces, eventMap, collisions, simTime) {
+      const pieces = clonePieces(startPieces);
+      for (const piece of pieces) {
+        const events = eventMap.get(piece.id);
+        if (!events || !piece.tiles || piece.tiles.length === 0) continue;
+        const offsets = piece.tiles.map((t) => ({
+          dc: t.col - piece.tiles[0].col,
+          dr: t.row - piece.tiles[0].row,
+        }));
+        let fromHead = { col: piece.tiles[0].col, row: piece.tiles[0].row };
+        let head = fromHead;
+        let fromTime = 0;
+        let foundSegment = false;
+        for (const ev of events) {
+          if (simTime < ev.time) {
+            const denom = ev.time - fromTime;
+            const p = denom <= 0 ? 1 : (simTime - fromTime) / denom;
+            head = {
+              col: fromHead.col + (ev.col - fromHead.col) * Math.max(0, Math.min(1, p)),
+              row: fromHead.row + (ev.row - fromHead.row) * Math.max(0, Math.min(1, p)),
+            };
+            foundSegment = true;
+            break;
+          }
+          fromHead = { col: ev.col, row: ev.row };
+          fromTime = ev.time;
+        }
+        if (!foundSegment) {
+          head = fromHead;
+        }
+        piece.tiles = offsets.map((o) => ({ col: head.col + o.dc, row: head.row + o.dr }));
+      }
+      for (const c of (collisions || [])) {
+        if (simTime <= c.time + 0.35) continue;
+        const a = pieces.find((p) => p.id === c.pieceAId);
+        const b = pieces.find((p) => p.id === c.pieceBId);
+        if (a && !c.aliveA) {
+          a.alive = false;
+          a.tiles = [];
+        }
+        if (b && !c.aliveB) {
+          b.alive = false;
+          b.tiles = [];
+        }
+      }
+      return pieces;
+    }
+
+    function getAnimationCollisionProgress(collision, simTime) {
+      const span = 0.35;
+      if (simTime < collision.time || simTime > collision.time + span) return null;
+      return (simTime - collision.time) / span;
+    }
+
+    function finishTurnAnimation() {
+      animating = false;
+      turnAnimation = null;
+      if (pendingStateUpdate) {
+        gameState = pendingStateUpdate;
+        pendingStateUpdate = null;
+      }
+      render();
+      updateUI();
+    }
+
+    function startTurnAnimation(msg) {
+      const startPieces = clonePieces(msg.startPieces || gameState?.pieces || []);
+      const moveEvents = msg.moveEvents || [];
+      const collisions = msg.collisions || [];
+      const maxSimTime = Math.max(
+        ...moveEvents.map((e) => e.time),
+        ...collisions.map((c) => c.time + 0.35),
+        0.6,
+      );
+      turnAnimation = {
+        startedAt: performance.now(),
+        durationMs: msg.animationMs || 1200,
+        maxSimTime,
+        startPieces,
+        eventMap: buildPieceEventMap(moveEvents),
+        collisions,
+      };
+      animating = true;
+
+      const tick = () => {
+        if (!turnAnimation) return;
+        const elapsed = performance.now() - turnAnimation.startedAt;
+        const p = Math.min(1, elapsed / turnAnimation.durationMs);
+        turnAnimation.progress = p;
+        render();
+        if (p < 1) {
+          requestAnimationFrame(tick);
+        } else {
+          finishTurnAnimation();
+        }
+      };
+      requestAnimationFrame(tick);
+    }
+
     // ─── Network events ─────────────────────────────
     net.on('roomCreated', (msg) => {
       myPlayer = msg.player;
@@ -481,18 +658,17 @@
     });
 
     net.on('stateUpdate', (msg) => {
+      if (animating) {
+        pendingStateUpdate = msg;
+        return;
+      }
       gameState = msg;
       render();
       updateUI();
     });
 
     net.on('turnResult', (msg) => {
-      if (msg.collisions && msg.collisions.length > 0) {
-        animating = true;
-        animateCollisions(msg.collisions, 0, () => {
-          animating = false;
-        });
-      }
+      startTurnAnimation(msg);
     });
 
     net.on('moveAccepted', () => {
@@ -709,6 +885,25 @@
     // ─── Rendering ──────────────────────────────────
     function render() {
       if (!renderer || !gameState) return;
+      let renderPieces = gameState.pieces;
+      let visibleCells = gameState.visibleCells ? new Set(gameState.visibleCells) : null;
+      let collisionOverlays = [];
+
+      if (turnAnimation) {
+        const simTime = turnAnimation.maxSimTime * (turnAnimation.progress || 0);
+        const animated = animatedPiecesAtTime(
+          turnAnimation.startPieces,
+          turnAnimation.eventMap,
+          turnAnimation.collisions,
+          simTime,
+        );
+        visibleCells = computeVisibleCellsForPieces(animated, myPlayer);
+        renderPieces = filterPiecesForView(animated, myPlayer, visibleCells, gameState.phase);
+        collisionOverlays = turnAnimation.collisions
+          .map((c) => ({ ...c, progress: getAnimationCollisionProgress(c, simTime) }))
+          .filter((c) => c.progress != null);
+      }
+
       renderer.clear();
       renderer.drawBoard(gameState.board);
 
@@ -716,7 +911,11 @@
         renderer.drawDeployZone(myPlayer);
       }
 
-      renderer.drawPieces(gameState.pieces, myPlayer);
+      renderer.drawPieces(renderPieces, myPlayer);
+
+      if (visibleCells && gameState.phase !== 'deploy') {
+        renderer.drawFog(visibleCells);
+      }
 
       if (reachableCells.length > 0) {
         renderer.highlightReachableCells(reachableCells);
@@ -734,7 +933,7 @@
 
       renderer.drawUI({
         turn: gameState.turn,
-        maxTurns: 15,
+        maxTurns: 25,
         phase: gameState.phase,
         currentPlayer: myPlayer,
         cardsRemaining: remaining,
@@ -742,6 +941,10 @@
         destinyEffects: gameState.destinyEffects || [],
         instructions: statusMsg,
       });
+
+      for (const c of collisionOverlays) {
+        renderer.drawCollisionAnimation(c.col, c.row, c.isExplosion, c.progress);
+      }
     }
 
     // ─── UI panels ──────────────────────────────────

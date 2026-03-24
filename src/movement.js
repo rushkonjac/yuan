@@ -8,7 +8,7 @@ import { isPassable, isInBounds } from './board.js';
 
 /** @param {import('./types.js').PieceShape} piece */
 function bodyConfigKey(piece) {
-  return piece.type === PIECE_TYPE.BOMB ? 1 : /** @type {1|2|3|4} */ (Math.min(4, Math.max(1, piece.bodySize)));
+  return piece.type === PIECE_TYPE.BOMB ? 1 : /** @type {1|2|3} */ (Math.min(3, Math.max(1, piece.bodySize)));
 }
 
 /**
@@ -251,6 +251,8 @@ export function executeTurn(moveA, moveB, _board, allPieces) {
   const sim = initialSimPositions(allPieces);
   /** @type {Set<string>} */
   const stopped = new Set();
+  /** @type {typeof events} */
+  const effectiveEvents = [];
   /** @type {{ col: number, row: number, pieceA: import('./types.js').PieceShape, pieceB: import('./types.js').PieceShape, time: number }[]} */
   const collisions = [];
 
@@ -279,6 +281,7 @@ export function executeTurn(moveA, moveB, _board, allPieces) {
     })();
 
     if (enemy) {
+      effectiveEvents.push(ev);
       collisions.push({
         col: targetCol,
         row: targetRow,
@@ -291,6 +294,7 @@ export function executeTurn(moveA, moveB, _board, allPieces) {
       continue;
     }
 
+    effectiveEvents.push(ev);
     sim.set(ev.piece.id, { col: targetCol, row: targetRow });
   }
 
@@ -302,5 +306,5 @@ export function executeTurn(moveA, moveB, _board, allPieces) {
     if (pos) finalPositions.push({ piece: p, col: pos.col, row: pos.row });
   }
 
-  return { collisions, finalPositions, events };
+  return { collisions, finalPositions, events: effectiveEvents };
 }

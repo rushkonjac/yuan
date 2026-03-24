@@ -246,7 +246,7 @@ export function applyCollisionResult(result, pieceA, pieceB) {
     const dr = result.rankChange.winner;
     const db = result.bodyChange.winner;
     w.currentRank = Math.max(1, w.currentRank + dr);
-    w.bodySize = Math.min(4, Math.max(1, w.bodySize + db));
+    w.bodySize = Math.min(3, Math.max(1, w.bodySize + db));
 
     if (result.loserA) result.loserA.alive = false;
     if (result.loserB) result.loserB.alive = false;

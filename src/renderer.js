@@ -23,6 +23,7 @@ const COLORS = {
   player1: '#00ccff',
   player2: '#ff6644',
   enemyHidden: '#444466',
+  enemyBody: '#665577',
   heart: '#ffcc00',
   bomb: '#ff3333',
   reefBg: '#1a1a22',
@@ -31,6 +32,7 @@ const COLORS = {
   currentSymbol: '#2a8a9a',
   riftTint: '#1a1028',
   riftSymbol: '#9966cc',
+  fogDark: 'rgba(0, 0, 0, 0.75)',
 };
 
 const BOARD_W = BOARD_COLS * CELL_SIZE;
@@ -46,19 +48,8 @@ function playerPieceColor(owner) {
  * @param {number} bodySize
  * @returns {{ blur: number, alpha: number, lineWidth: number }}
  */
-function enemyGlowParams(bodySize) {
-  const key = /** @type {1|2|3|4} */ (Math.min(4, Math.max(1, bodySize | 0)));
-  const g = BODY_CONFIG[key].glow;
-  switch (g) {
-    case 'dim':
-      return { blur: 6, alpha: 0.35, lineWidth: 2 };
-    case 'bright':
-      return { blur: 14, alpha: 0.55, lineWidth: 3 };
-    case 'intense':
-      return { blur: 22, alpha: 0.75, lineWidth: 4 };
-    default:
-      return { blur: 0, alpha: 0, lineWidth: 0 };
-  }
+function enemyGlowParams(_bodySize) {
+  return { blur: 0, alpha: 0, lineWidth: 0 };
 }
 
 /** @param {import('./types.js').PieceShape} piece */
@@ -239,38 +230,40 @@ export class Renderer {
     const showRank = isMine || piece.revealed;
     const r = CELL_SIZE * 0.38;
 
-    let fill = COLORS.enemyHidden;
-    let stroke = '#556688';
-    let label = '?';
-
-    if (isMine) {
-      if (piece.type === PIECE_TYPE.HEART) { fill = COLORS.heart; stroke = '#cc9900'; label = `♥${piece.currentRank}`; }
-      else if (piece.type === PIECE_TYPE.BOMB) { fill = COLORS.bomb; stroke = '#aa2222'; label = '💣'; }
-      else { fill = playerPieceColor(piece.owner); stroke = '#006688'; label = String(piece.currentRank); }
-    } else if (showRank) {
-      if (piece.type === PIECE_TYPE.HEART) { fill = COLORS.heart; stroke = '#cc9900'; label = `♥${piece.currentRank}`; }
-      else if (piece.type === PIECE_TYPE.BOMB) { fill = COLORS.bomb; stroke = '#aa2222'; label = '💣'; }
-      else { fill = playerPieceColor(piece.owner); stroke = piece.owner === 1 || piece.owner === '1' ? '#006688' : '#884422'; label = String(piece.currentRank); }
-    }
-
     ctx.save();
 
     if (!isMine) {
-      const glow = enemyGlowParams(piece.bodySize);
-      if (glow.blur > 0) {
-        for (const t of piece.tiles) {
-          const { x, y } = this.cellToPixel(t.col, t.row);
-          ctx.strokeStyle = `rgba(136, 170, 204, ${glow.alpha})`;
-          ctx.lineWidth = glow.lineWidth;
-          ctx.shadowColor = '#88aacc';
-          ctx.shadowBlur = glow.blur;
-          ctx.beginPath();
-          ctx.arc(x + CELL_SIZE / 2, y + CELL_SIZE / 2, r + 2, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        ctx.shadowBlur = 0;
+      for (const t of piece.tiles) {
+        const { x, y } = this.cellToPixel(t.col, t.row);
+        const cx = x + CELL_SIZE / 2;
+        const cy = y + CELL_SIZE / 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = showRank ? playerPieceColor(piece.owner) : COLORS.enemyBody;
+        ctx.globalAlpha = 0.85;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#556688';
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
+      if (showRank && piece.tiles.length > 0) {
+        const ht = piece.tiles[0];
+        const hp = this.cellToPixel(ht.col, ht.row);
+        ctx.font = `bold ${Math.floor(r * 0.9)}px ${this._monoFamily}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#0a0e1a';
+        ctx.fillText(String(piece.currentRank || '?'), hp.x + CELL_SIZE / 2, hp.y + CELL_SIZE / 2);
+      }
+      ctx.restore();
+      return;
     }
+
+    let fill, stroke, label;
+    if (piece.type === PIECE_TYPE.HEART) { fill = COLORS.heart; stroke = '#cc9900'; label = `♥${piece.currentRank}`; }
+    else if (piece.type === PIECE_TYPE.BOMB) { fill = COLORS.bomb; stroke = '#aa2222'; label = '💣'; }
+    else { fill = playerPieceColor(piece.owner); stroke = '#006688'; label = String(piece.currentRank); }
 
     for (let i = 0; i < piece.tiles.length; i++) {
       const t = piece.tiles[i];
@@ -307,13 +300,14 @@ export class Renderer {
     const hcx = hp.x + CELL_SIZE / 2;
     const hcy = hp.y + CELL_SIZE / 2;
 
-    ctx.font = piece.type === PIECE_TYPE.BOMB && (isMine || showRank)
+    ctx.font = piece.type === PIECE_TYPE.BOMB
       ? `${Math.floor(r * 1.1)}px serif`
       : `bold ${Math.floor(r * 0.95)}px ${this._monoFamily}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = showRank && piece.type !== PIECE_TYPE.BOMB ? '#0a0e1a' : '#f0f0f0';
-    if (showRank) { ctx.shadowColor = fill; ctx.shadowBlur = 4; }
+    ctx.fillStyle = piece.type !== PIECE_TYPE.BOMB ? '#0a0e1a' : '#f0f0f0';
+    ctx.shadowColor = fill;
+    ctx.shadowBlur = 4;
     ctx.fillText(label, hcx, hcy);
     ctx.shadowBlur = 0;
 
@@ -565,6 +559,24 @@ export class Renderer {
   /**
    * @param {{ col: number, row: number }[]} cells
    */
+  /**
+   * Draw fog of war overlay. visibleCells is a Set of encoded cell keys (col * BOARD_ROWS + row).
+   */
+  drawFog(visibleCells) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.fillStyle = COLORS.fogDark;
+    for (let col = 0; col < BOARD_COLS; col++) {
+      for (let row = 0; row < BOARD_ROWS; row++) {
+        const key = col * BOARD_ROWS + row;
+        if (visibleCells && visibleCells.has(key)) continue;
+        const { x, y } = this.cellToPixel(col, row);
+        ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+      }
+    }
+    ctx.restore();
+  }
+
   highlightReachableCells(cells) {
     const { ctx } = this;
     ctx.save();
@@ -627,13 +639,13 @@ function deployZoneTiles(player) {
   /** @type {{ col: number, row: number }[]} */
   const tiles = [];
   if (player === 1) {
-    for (let row = 0; row <= 1; row += 1) {
+    for (let row = 0; row <= 2; row += 1) {
       for (let col = 0; col < BOARD_COLS; col += 1) {
         tiles.push({ col, row });
       }
     }
   } else if (player === 2) {
-    for (let row = 7; row <= 8; row += 1) {
+    for (let row = BOARD_ROWS - 3; row < BOARD_ROWS; row += 1) {
       for (let col = 0; col < BOARD_COLS; col += 1) {
         tiles.push({ col, row });
       }

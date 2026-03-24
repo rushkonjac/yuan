@@ -3,7 +3,16 @@
  */
 
 import { Game } from '../src/game.js';
-import { PHASE, CARD_POOL, DESTINY_TURNS, PIECE_TYPE } from '../src/types.js';
+import {
+  PHASE,
+  CARD_POOL,
+  DESTINY_TURNS,
+  PIECE_TYPE,
+  BODY_CONFIG,
+  BOARD_COLS,
+  BOARD_ROWS,
+  SIMULATION_TIME,
+} from '../src/types.js';
 import { getDeployZone, isPassable } from '../src/board.js';
 import { findPieceAt } from '../src/movement.js';
 
@@ -14,34 +23,81 @@ function generateCode() {
   return code;
 }
 
-function filterPiecesForPlayer(pieces, viewPlayer, phase) {
-  return pieces.filter(p => p.alive || true).map(p => {
+/**
+ * Compute the set of visible cells for a player (union of all own pieces' vision).
+ * Vision = Manhattan distance <= radius from each tile of each own alive piece.
+ */
+function computeVisibleCells(pieces, viewPlayer) {
+  const visible = new Set();
+  for (const p of pieces) {
+    if (p.owner !== viewPlayer || !p.alive) continue;
+    const cfg = BODY_CONFIG[Math.min(3, Math.max(1, p.bodySize))];
+    const radius = cfg.vision;
+    for (const t of p.tiles) {
+      for (let dc = -radius; dc <= radius; dc++) {
+        for (let dr = -radius; dr <= radius; dr++) {
+          if (Math.abs(dc) + Math.abs(dr) > radius) continue;
+          const c = t.col + dc;
+          const r = t.row + dr;
+          if (c >= 0 && c < BOARD_COLS && r >= 0 && r < BOARD_ROWS) {
+            visible.add(c * BOARD_ROWS + r);
+          }
+        }
+      }
+    }
+  }
+  return visible;
+}
+
+function filterPiecesForPlayer(pieces, viewPlayer, phase, visibleCells) {
+  const result = [];
+  for (const p of pieces) {
     const isEnemy = p.owner !== viewPlayer;
+
+    if (!isEnemy) {
+      result.push({
+        id: p.id,
+        owner: p.owner,
+        bodySize: p.bodySize,
+        tiles: p.tiles.map(t => ({ col: t.col, row: t.row })),
+        alive: p.alive,
+        type: p.type,
+        rank: p.rank,
+        currentRank: p.currentRank,
+        triggerCard: p.triggerCard ? p.triggerCard.id || p.triggerCard : null,
+        revealed: p.revealed,
+      });
+      continue;
+    }
+
+    if (phase === PHASE.DEPLOY) {
+      result.push({
+        id: p.id, owner: p.owner, bodySize: 0, tiles: [], alive: p.alive,
+        hasCard: false, revealed: false,
+      });
+      continue;
+    }
+
+    const visTiles = p.tiles.filter(t => visibleCells.has(t.col * BOARD_ROWS + t.row));
+    if (visTiles.length === 0 && p.alive) continue;
+
     const base = {
       id: p.id,
       owner: p.owner,
-      bodySize: p.bodySize,
-      tiles: (isEnemy && phase === PHASE.DEPLOY)
-        ? []
-        : p.tiles.map(t => ({ col: t.col, row: t.row })),
+      bodySize: visTiles.length,
+      tiles: visTiles.map(t => ({ col: t.col, row: t.row })),
       alive: p.alive,
+      isPartial: visTiles.length < p.tiles.length,
+      hasCard: !!p.triggerCard,
+      revealed: p.revealed,
     };
-    if (!isEnemy) {
+    if (p.revealed) {
       base.type = p.type;
-      base.rank = p.rank;
       base.currentRank = p.currentRank;
-      base.triggerCard = p.triggerCard ? p.triggerCard.id || p.triggerCard : null;
-      base.revealed = p.revealed;
-    } else {
-      base.hasCard = !!p.triggerCard;
-      base.revealed = p.revealed;
-      if (p.revealed) {
-        base.type = p.type;
-        base.currentRank = p.currentRank;
-      }
     }
-    return base;
-  });
+    result.push(base);
+  }
+  return result;
 }
 
 function serializeBoard(board) {
@@ -57,6 +113,21 @@ function serializeBoard(board) {
     }
   }
   return result;
+}
+
+function serializePiecesForAnimation(pieces) {
+  return pieces.map((p) => ({
+    id: p.id,
+    owner: p.owner,
+    type: p.type,
+    rank: p.rank,
+    currentRank: p.currentRank,
+    bodySize: p.bodySize,
+    tiles: p.tiles.map((t) => ({ col: t.col, row: t.row })),
+    alive: p.alive,
+    triggerCard: p.triggerCard ? p.triggerCard.id || p.triggerCard : null,
+    revealed: p.revealed,
+  }));
 }
 
 const PHASE_TIMEOUTS = {
@@ -169,17 +240,48 @@ export class Room {
     if (!game.player1.commandSubmitted || !game.player2.commandSubmitted) return;
 
     this.clearPhaseTimer();
+    const startPieces = serializePiecesForAnimation(game.pieces);
     const result = game.executeMoves();
 
     const collisionData = result.collisions.map(c => ({
       col: c.col,
       row: c.row,
       time: c.time,
+      pieceAId: c.pieceA.id,
+      pieceBId: c.pieceB.id,
+      aliveA: c.pieceA.alive,
+      aliveB: c.pieceB.alive,
       isExplosion: c.pieceA.type === PIECE_TYPE.BOMB || c.pieceB.type === PIECE_TYPE.BOMB,
     }));
 
-    this.sendTo(1, { event: 'turnResult', collisions: collisionData });
-    this.sendTo(2, { event: 'turnResult', collisions: collisionData });
+    const eventData = result.events.map((ev) => ({
+      time: ev.time,
+      pieceId: ev.piece.id,
+      owner: ev.piece.owner,
+      col: ev.col,
+      row: ev.row,
+      type: ev.type,
+    }));
+    const maxEventTime = eventData.reduce((m, ev) => Math.max(m, ev.time), 0);
+    const animationMs = Math.max(
+      collisionData.length > 0 ? 1200 : 700,
+      Math.round((Math.max(maxEventTime, 0.6) / SIMULATION_TIME) * 1600),
+    );
+
+    this.sendTo(1, {
+      event: 'turnResult',
+      collisions: collisionData,
+      moveEvents: eventData,
+      animationMs,
+      startPieces,
+    });
+    this.sendTo(2, {
+      event: 'turnResult',
+      collisions: collisionData,
+      moveEvents: eventData,
+      animationMs,
+      startPieces,
+    });
 
     setTimeout(() => {
       if (game.gameResult) {
@@ -189,7 +291,7 @@ export class Room {
         this.broadcastState();
         this.startPhaseTimer();
       }
-    }, collisionData.length > 0 ? 800 : 100);
+    }, animationMs + 120);
   }
 
   startPhaseTimer() {
@@ -274,11 +376,15 @@ export class Room {
     const st = game.getPlayerState(player);
     const opSt = game.getPlayerState(player === 1 ? 2 : 1);
 
+    const visibleCells = computeVisibleCells(game.pieces, player);
+    const visArray = [...visibleCells];
+
     const state = {
       event: 'stateUpdate',
       phase: game.phase,
       turn: game.turn,
-      pieces: filterPiecesForPlayer(game.pieces, player, game.phase),
+      pieces: filterPiecesForPlayer(game.pieces, player, game.phase, visibleCells),
+      visibleCells: visArray,
       board: serializeBoard(game.board),
       cards: st.cards.map(c => ({ id: c.id, name: c.name, type: c.type, desc: c.desc })),
       usedCards: st.usedCards,

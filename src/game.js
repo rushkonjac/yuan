@@ -426,35 +426,43 @@ export class Game {
   }
 
   /**
-   * Sync piece.tiles to match piece.bodySize after collision.
-   * Growth extends behind the head (opposite to growthDir).
+   * Grow piece tiles around head after collision victory.
+   * Head stays at tiles[0]; new tiles expand outward into adjacent empty cells.
+   * Priority: opposite of growthDir, then sides, then growthDir itself.
+   * If no valid cell found, bodySize is reverted to actual tiles count.
    */
   _syncTilesToBodySize(piece, growthDir) {
     const target = piece.bodySize;
     while (piece.tiles.length > target) {
       piece.tiles.pop();
     }
+    const priorityDirs = [
+      { dx: -growthDir.dx, dy: -growthDir.dy },
+      { dx: growthDir.dy, dy: -growthDir.dx },
+      { dx: -growthDir.dy, dy: growthDir.dx },
+      { dx: growthDir.dx, dy: growthDir.dy },
+    ];
     while (piece.tiles.length < target) {
-      const tail = piece.tiles[piece.tiles.length - 1];
-      const newCol = tail.col - growthDir.dx;
-      const newRow = tail.row - growthDir.dy;
-      if (isInBounds(newCol, newRow)) {
-        piece.tiles.push({ col: newCol, row: newRow });
-      } else {
-        const dirs = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}];
-        let added = false;
-        for (const d of dirs) {
-          const fc = tail.col + d.dx;
-          const fr = tail.row + d.dy;
-          if (isInBounds(fc, fr)) {
-            const occupied = piece.tiles.some(t => t.col === fc && t.row === fr);
-            if (!occupied) { piece.tiles.push({ col: fc, row: fr }); added = true; break; }
-          }
+      let added = false;
+      for (const t of piece.tiles) {
+        for (const d of priorityDirs) {
+          const nc = t.col + d.dx;
+          const nr = t.row + d.dy;
+          if (!isInBounds(nc, nr)) continue;
+          if (!isPassable(this.board, nc, nr)) continue;
+          if (piece.tiles.some(pt => pt.col === nc && pt.row === nr)) continue;
+          if (findPieceAt(this.pieces, nc, nr, piece)) continue;
+          piece.tiles.push({ col: nc, row: nr });
+          added = true;
+          break;
         }
-        if (!added) break;
+        if (added) break;
+      }
+      if (!added) {
+        piece.bodySize = piece.tiles.length;
+        break;
       }
     }
-    console.log(`[SyncTiles] piece=${piece.id} bodySize=${piece.bodySize} tiles=${JSON.stringify(piece.tiles)} dir=${JSON.stringify(growthDir)}`);
   }
 
   // --- Execute Phase ---
@@ -498,11 +506,9 @@ export class Game {
       if (!c.pieceA.alive || !c.pieceB.alive) continue;
 
       const result = resolveCollision(c.pieceA, c.pieceB);
-      console.log(`[Collision] A=${c.pieceA.id}(rank=${c.pieceA.currentRank},body=${c.pieceA.bodySize}) vs B=${c.pieceB.id}(rank=${c.pieceB.currentRank},body=${c.pieceB.bodySize}) => type=${result.type}`);
       applyCollisionResult(result, c.pieceA, c.pieceB);
 
       if (result.type === 'win' && result.winner) {
-        console.log(`[Collision] winner=${result.winner.id} newBody=${result.winner.bodySize} newRank=${result.winner.currentRank} tilesLen=${result.winner.tiles.length}`);
         const growDir = this._getGrowthDir(result.winner, c.pieceA, move1, move2);
         movePieceTo(result.winner, c.col, c.row);
         if (result.loserA && !result.loserA.alive) {
@@ -512,7 +518,7 @@ export class Game {
           this._applyResonanceOnDeath(result.loserB, result.winner);
         }
         if (this._hasShell(/** @type {1|2} */ (result.winner.owner))) {
-          result.winner.bodySize = Math.min(4, result.winner.bodySize + 1);
+          result.winner.bodySize = Math.min(3, result.winner.bodySize + 1);
         }
         this._syncTilesToBodySize(result.winner, growDir);
       }

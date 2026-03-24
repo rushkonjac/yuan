@@ -1,5 +1,5 @@
 /**
- * @fileoverview 7×9 grid board for 渊 (Yuan): terrain, rift pairs, deploy zones.
+ * @fileoverview 9×13 grid board for 渊 (Yuan): terrain, rift pairs, deploy zones.
  */
 
 import {
@@ -10,19 +10,23 @@ import {
 } from './types.js';
 
 /**
- * Hand-designed map. Index 0 = row 8 (top), index 8 = row 0 (bottom).
+ * Hand-designed map 9×13. Index 0 = row 12 (top), index 12 = row 0 (bottom).
  * `.` plain, `#` reef, `~` current, `@` rift.
  */
 const DEFAULT_MAP_TEMPLATE = `
-.......    row 8  P2 deploy back
-.......    row 7  P2 deploy front
-.#.~.#.    row 6  P2 territory
-..#.#..    row 5  P2 territory
-@.....@    row 4  center rifts
-..#.#..    row 3  P1 territory
-.#.~.#.    row 2  P1 territory
-.......    row 1  P1 deploy front
-.......    row 0  P1 deploy back
+.........    row 12  P2 deploy back
+.........    row 11  P2 deploy mid
+.........    row 10  P2 deploy front
+.#..~..#.    row 9   P2 territory
+..#.#.#..    row 8   P2 territory
+....#....    row 7   mid-upper
+@...~...@    row 6   center rifts
+....#....    row 5   mid-lower
+..#.#.#..    row 4   P1 territory
+.#..~..#.    row 3   P1 territory
+.........    row 2   P1 deploy front
+.........    row 1   P1 deploy mid
+.........    row 0   P1 deploy back
 `
   .trim()
   .split('\n')
@@ -56,7 +60,7 @@ export function createBoard() {
 }
 
 /**
- * Fills `board` with the default terrain layout and links rifts at (0,4) ↔ (6,4).
+ * Fills `board` with the default terrain layout and links rifts at (0,6) ↔ (8,6).
  *
  * @param {Cell[][]} board
  */
@@ -64,14 +68,14 @@ export function loadDefaultMap(board) {
   for (let row = 0; row < BOARD_ROWS; row += 1) {
     const line = DEFAULT_MAP_TEMPLATE[BOARD_ROWS - 1 - row];
     for (let col = 0; col < BOARD_COLS; col += 1) {
-      const ch = line[col];
+      const ch = line ? line[col] : '.';
       const terrain = CHAR_TO_TERRAIN[ch] ?? TERRAIN.NONE;
       board[col][row].terrain = terrain;
       board[col][row].riftPair = null;
     }
   }
-  board[0][4].riftPair = { col: 6, row: 4 };
-  board[6][4].riftPair = { col: 0, row: 4 };
+  board[0][6].riftPair = { col: 8, row: 6 };
+  board[8][6].riftPair = { col: 0, row: 6 };
 }
 
 /**
@@ -102,13 +106,13 @@ export function getDeployZone(player) {
   /** @type {{ col: number, row: number }[]} */
   const tiles = [];
   if (player === 1) {
-    for (let row = 0; row <= 1; row += 1) {
+    for (let row = 0; row <= 2; row += 1) {
       for (let col = 0; col < BOARD_COLS; col += 1) {
         tiles.push({ col, row });
       }
     }
   } else if (player === 2) {
-    for (let row = 7; row <= 8; row += 1) {
+    for (let row = 10; row <= 12; row += 1) {
       for (let col = 0; col < BOARD_COLS; col += 1) {
         tiles.push({ col, row });
       }
