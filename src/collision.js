@@ -131,7 +131,7 @@ export function resolveCollision(pieceA, pieceB) {
     }
     bodyDelta = 1;
   } else {
-    // 同阶：比体积；大者胜，胜方新体积 = 体积差；胜方阶位 -1（最低 1）；体积相同则双亡
+    // 同阶：比体积；大者胜，胜方新体积 = 体积差；胜方阶位不变；体积相同则双亡
     if (ba === bb) {
       return {
         type: 'mutual_death',
@@ -154,7 +154,7 @@ export function resolveCollision(pieceA, pieceB) {
       loser = pieceA;
       bodyDelta = (bb - ba) - bb;
     }
-    rankDelta = -1;
+    rankDelta = 0;
   }
 
   // --- 5) 渊甲：若败方携带，则在应用伤害前取消整次碰撞（双方回位，不扣阶不加体积） ---

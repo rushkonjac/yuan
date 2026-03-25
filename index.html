@@ -585,14 +585,20 @@
     }
 
     function finishTurnAnimation() {
-      animating = false;
-      turnAnimation = null;
       if (pendingStateUpdate) {
         gameState = pendingStateUpdate;
         pendingStateUpdate = null;
+        animating = false;
+        turnAnimation = null;
+        render();
+        updateUI();
+        return;
+      }
+      if (turnAnimation) {
+        turnAnimation.progress = 1;
+        turnAnimation.waitingForState = true;
       }
       render();
-      updateUI();
     }
 
     function startTurnAnimation(msg) {
@@ -659,6 +665,15 @@
 
     net.on('stateUpdate', (msg) => {
       if (animating) {
+        if (turnAnimation?.waitingForState) {
+          gameState = msg;
+          pendingStateUpdate = null;
+          animating = false;
+          turnAnimation = null;
+          render();
+          updateUI();
+          return;
+        }
         pendingStateUpdate = msg;
         return;
       }
